@@ -16,22 +16,42 @@ import psutil
 from datetime import datetime
 from PIL import Image, ImageTk
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION & KNOWLEDGE BASE ---
 DATA_DIR = "tafust_data"
 LOGO_PATH = "img/logo.png"
 
-# Port Knowledge Base
+# Standard Service Mappings
 COMMON_SERVICES = {
     21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP", 53: "DNS",
-    80: "HTTP", 443: "HTTPS", 3306: "MySQL", 5353: "mDNS"
+    80: "HTTP", 135: "RPC", 139: "NetBIOS", 1883: "MQTT", 443: "HTTPS", 
+    445: "SMB", 3306: "MySQL", 5353: "mDNS", 7680: "Windows Update",
+    27017: "MongoDB"
 }
 
-# Known/Safe Process Patterns (Cross-platform)
-KNOWN_PROCESSES = [
-    "sshd", "nginx", "apache", "mysql", "brave", "python", 
-    "language_server", "systemd", "avahi-daemon", "antigravity",
-    "lsass", "svchost", "explorer", "services", "system idle process"
+# Tiered Process Classification (Normalized: lowercase, no .exe)
+CORE_SYSTEM = [
+    "system", "svchost", "lsass", "services", "wininit", "spoolsv", 
+    "explorer", "system idle process", "smss", "csrss", "winlogon"
 ]
+
+TRUSTED_APPS = [
+    "brave", "chrome", "firefox", "msedge", "antigravity", "armourycrate",
+    "asus", "nvidia", "steam", "discord", "spotify"
+]
+
+DEV_TOOLS = [
+    "python", "node", "mongod", "mosquitto", "docker", "java", "code", "git"
+]
+
+# Process to Port Expectations (Reduces risk if matched)
+EXPECTED_PORTS = {
+    "mosquitto": [1883, 8883],
+    "mongod": [27017],
+    "mysql": [3306],
+    "nginx": [80, 443],
+    "apache": [80, 443],
+    "sshd": [22]
+}
 
 class TafustApp:
     def __init__(self, root):
@@ -116,15 +136,57 @@ class TafustApp:
             analyzed_data = self.analyze_risk(parsed_data)
             self.root.after(0, lambda: self.update_ui(analyzed_data))
         except Exception as e:
-            self.root.after(0, lambda: self.finish_scan(f"❌ Critical Error: {str(e)}"))
+            error_msg = str(e)
+            self.log_error(f"Analysis failed: {error_msg}")
+            self.root.after(0, lambda: self.finish_scan(f"❌ Critical Error: {error_msg}"))
+
+    def log_error(self, message):
+        """Logs error message to a file."""
+        log_path = os.path.join(DATA_DIR, "tafust.log")
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"[{timestamp}] ERROR: {message}\n")
+        except:
+            print(f"Failed to write to log: {message}")
+
+    def log_debug(self, message):
+        """Logs debug message to a file and console."""
+        log_path = os.path.join(DATA_DIR, "debug.log")
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"[{timestamp}] DEBUG: {message}\n")
+        except: pass
+        print(f"DEBUG: {message}")
 
     def get_linux_ports(self):
         """Returns raw output from ss command."""
-        return subprocess.run(['ss', '-tulnp'], capture_output=True, text=True, check=True).stdout
+        try:
+            return subprocess.run(
+                ['ss', '-tulnp'], 
+                capture_output=True, 
+                encoding="utf-8", 
+                errors="ignore", 
+                check=True
+            ).stdout
+        except Exception as e:
+            self.log_error(f"Linux port scan failed: {str(e)}")
+            return ""
 
     def get_windows_ports(self):
         """Returns raw output from netstat command."""
-        return subprocess.run(['netstat', '-ano'], capture_output=True, text=True, check=True).stdout
+        try:
+            return subprocess.run(
+                ['netstat', '-ano'], 
+                capture_output=True, 
+                encoding="utf-8", 
+                errors="ignore", 
+                check=True
+            ).stdout
+        except Exception as e:
+            self.log_error(f"Windows port scan failed: {str(e)}")
+            return ""
 
     def parse_linux_output(self, output):
         parsed = []
@@ -168,37 +230,94 @@ class TafustApp:
         return parsed
 
     def calculate_risk_score(self, entry):
-        score = 50
+        """
+        Advanced Context-Aware Risk Engine (EDR-style).
+        Analyzes Process Trust, Network Exposure, and Port Reputation.
+        """
         reasons = []
-
-        # Interface Factor
-        if entry["ip"] in ["127.0.0.1", "::1", "0:0:0:0:0:0:0:1"]:
-            score -= 15
-            reasons.append("Localhost interface reduces external exposure.")
+        
+        # --- PHASE 1: Normalization & Classification ---
+        proc_raw = entry["proc"]
+        proc_norm = proc_raw.lower()
+        if proc_norm.endswith(".exe"): proc_norm = proc_norm[:-4]
+        
+        # Determine Trust Level
+        if proc_norm in CORE_SYSTEM:
+            trust_level = "CORE"
+            base_score = 0
+            reasons.append(f"✅ CORE SYSTEM: '{proc_raw}' is a verified Windows system component.")
+        elif any(app in proc_norm for app in TRUSTED_APPS):
+            trust_level = "TRUSTED"
+            base_score = 10
+            reasons.append(f"✅ TRUSTED APP: '{proc_raw}' is a recognized legitimate application.")
+        elif any(tool in proc_norm for tool in DEV_TOOLS):
+            trust_level = "DEV"
+            base_score = 20
+            reasons.append(f"🛠️ DEV TOOL: '{proc_raw}' is a known developer utility.")
         else:
-            score += 20
-            reasons.append("External interface allows remote connections.")
+            trust_level = "UNKNOWN"
+            base_score = 60
+            reasons.append(f"❓ UNKNOWN: '{proc_raw}' is not in the local trust database.")
 
-        # Process Factor
-        is_known = any(p in entry["proc"].lower() for p in KNOWN_PROCESSES)
-        if is_known:
-            score -= 30
-            reasons.append(f"Known/Common process: {entry['proc']}")
+        # --- PHASE 2: Exposure Analysis ---
+        is_localhost = entry["ip"] in ["127.0.0.1", "::1", "0:0:0:0:0:0:0:1"]
+        if is_localhost:
+            exposure_multiplier = 0.5
+            reasons.append("🔒 LOCAL ONLY: Service is isolated to localhost (significant risk reduction).")
         else:
-            score += 25
-            reasons.append(f"Unrecognized process: {entry['proc']}")
+            exposure_multiplier = 1.2
+            reasons.append("🌐 NETWORK EXPOSED: Service is listening on a network interface.")
 
-        # Port Factor
-        if entry["port"] in COMMON_SERVICES:
-            score -= 10
-            reasons.append(f"Standard service port: {entry['port']} ({COMMON_SERVICES[entry['port']]})")
-        elif entry["port"] > 1024:
-            score += 15
-            reasons.append(f"Unusual high port: {entry['port']}")
+        # --- PHASE 3: Port Reputation & Mapping ---
+        port = entry["port"]
+        is_common = port in COMMON_SERVICES
+        is_expected = port in EXPECTED_PORTS.get(proc_norm, [])
+        is_dynamic = 49152 <= port <= 65535
 
-        score = max(0, min(100, score))
-        status = "SAFE" if score <= 30 else "WARNING" if score <= 70 else "SUSPICIOUS"
-        return score, status, reasons
+        port_score = 0
+        if is_expected:
+            port_score -= 20
+            reasons.append(f"🎯 EXPECTED PORT: Port {port} is standard for {proc_raw}.")
+        elif is_common:
+            port_score -= 10
+            reasons.append(f"📋 COMMON PORT: Port {port} matches a known service ({COMMON_SERVICES[port]}).")
+        elif is_dynamic:
+            port_score += 5
+            reasons.append(f"🔄 DYNAMIC RANGE: Port {port} is in the standard ephemeral range.")
+        else:
+            port_score += 25
+            reasons.append(f"⚠️ UNUSUAL PORT: Port {port} is non-standard for this system.")
+
+        # --- PHASE 4: Decision Logic (Final Scoring) ---
+        # Calculation: (Base + Port) * Exposure
+        final_score = (base_score + port_score) * exposure_multiplier
+        
+        # Apply Guardrails
+        if trust_level == "CORE":
+            final_score = min(final_score, 15) # Never above SAFE
+        elif trust_level == "DEV" and is_localhost:
+            final_score = min(final_score, 25) # Always SAFE if local dev
+        elif trust_level == "TRUSTED" and is_common:
+            final_score = min(final_score, 30) # Likely SAFE
+
+        # Final Status Determination
+        final_score = max(0, min(100, final_score))
+        
+        # EDR-style Decision Criteria
+        if final_score < 35:
+            status = "SAFE"
+        elif final_score < 75:
+            status = "WARNING"
+        else:
+            # SUSPICIOUS only if: Unknown process AND Network Exposed AND Unusual Port
+            if trust_level == "UNKNOWN" and not is_localhost and not is_common:
+                status = "SUSPICIOUS"
+            else:
+                status = "WARNING" # Downgrade if any safety factor exists
+
+        self.log_debug(f"EDR Analysis: {proc_raw} | Trust: {trust_level} | Final Score: {final_score:.1f} | Decision: {status}")
+        
+        return int(final_score), status, reasons
 
     def analyze_risk(self, data):
         for entry in data:
