@@ -16,3 +16,6 @@ logs/
 
 # Fichiers de variables d'environnement (si vous en utilisez plus tard)
 .env
+
+# Ignore les binaires Go
+engine/*.exe
