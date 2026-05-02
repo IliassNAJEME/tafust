@@ -1,18 +1,18 @@
-import tkinter as tk
+import customtkinter as ctk
 from src.interface import TafustUI
 from src.scanner_manager import ScannerManager
 
 def main():
-    # 1. Initialisation de la logique
+    # 1. Initialisation de la logique (Backend)
     manager = ScannerManager()
 
-    # 2. Initialisation de l'UI
-    root = tk.Tk()
-    app = TafustUI(root, manager)
+    # 2. Initialisation de l'Interface Moderne (CustomTkinter)
+    # TafustUI hérite maintenant de ctk.CTk, elle est sa propre fenêtre racine.
+    app = TafustUI(None, manager)
 
     # 3. Lancement
-    print("🧿 Tafust : Application démarrée (Architecture Modulaire)")
-    root.mainloop()
+    print("🧿 Tafust : Interface Moderne chargée.")
+    app.mainloop()
 
 if __name__ == "__main__":
     main()
