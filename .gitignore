@@ -1,5 +1,18 @@
+# Environnement virtuel
 venv/
+
+# Cache Python
 __pycache__/
 *.pyc
-data/
+
+# Dossiers de données et logs (Corrigé)
+tafust_data/
 logs/
+
+# Fichiers de configuration IDE (optionnel mais recommandé)
+.vscode/
+.idea/
+.DS_Store
+
+# Fichiers de variables d'environnement (si vous en utilisez plus tard)
+.env

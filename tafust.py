@@ -34,10 +34,33 @@ CORE_SYSTEM = [
     "explorer", "system idle process", "smss", "csrss", "winlogon"
 ]
 
-TRUSTED_APPS = [
-    "brave", "chrome", "firefox", "msedge", "antigravity", "armourycrate",
-    "asus", "nvidia", "steam", "discord", "spotify"
-]
+# 1. Configuration de la Whitelist
+WHITELIST_FILE = "whitelist.txt"
+
+def load_whitelist():
+    """
+    Charge la liste des processus de confiance depuis un fichier externe.
+    """
+    whitelist = set()
+    try:
+        if os.path.exists(WHITELIST_FILE):
+            with open(WHITELIST_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    proc = line.strip().lower()
+                    if proc:
+                        # On retire l'extension .exe pour une comparaison plus souple
+                        if proc.endswith(".exe"): proc = proc[:-4]
+                        whitelist.add(proc)
+            print(f"Whitelist chargée : {len(whitelist)} processus identifiés.")
+        else:
+            print(f"Avertissement : '{WHITELIST_FILE}' absent. Utilisation d'une liste vide.")
+    except Exception as e:
+        print(f"Erreur lors du chargement de la whitelist : {e}")
+    
+    return whitelist
+
+# Initialisation globale (sera rafraîchie au démarrage de l'app)
+CURRENT_WHITELIST = set()
 
 DEV_TOOLS = [
     "python", "node", "mongod", "mosquitto", "docker", "java", "code", "git"
@@ -53,6 +76,45 @@ EXPECTED_PORTS = {
     "sshd": [22]
 }
 
+def get_risk_score(process_name, port, address):
+    """
+    Calcule le score de risque en fonction du processus et de l'exposition réseau.
+    """
+    score = 0
+    reasoning = []
+    
+    # Normalisation du nom du processus
+    proc_norm = process_name.lower()
+    if proc_norm.endswith(".exe"): proc_norm = proc_norm[:-4]
+
+    # A. Analyse de confiance (via CURRENT_WHITELIST)
+    if proc_norm in CURRENT_WHITELIST:
+        score += 0
+        reasoning.append(f"✅ TRUSTED: '{process_name}' est dans la whitelist.")
+    else:
+        score += 50
+        reasoning.append(f"❓ UNKNOWN: '{process_name}' n'est pas reconnu.")
+
+    # B. Analyse de l'exposition (IPv4 & IPv6 robustesse)
+    addr_clean = address.strip("[]").lower()
+    
+    # Définition des scopes
+    is_local = addr_clean in ["127.0.0.1", "::1", "localhost", "0:0:0:0:0:0:0:1"]
+    is_exposed = addr_clean in ["0.0.0.0", "::", "any", "all"]
+
+    if is_local:
+        score -= 20
+        reasoning.append("🔒 LOCAL ONLY: Service isolé en loopback.")
+    elif is_exposed:
+        score += 30
+        reasoning.append("🌐 NETWORK EXPOSED: Service accessible via interface publique.")
+    else:
+        score += 15 # IP spécifique
+        reasoning.append(f"📡 IP BIND: Service lié à une interface spécifique ({address}).")
+
+    # C. Ajustement final (Min/Max)
+    return max(0, min(100, score)), reasoning
+
 class TafustApp:
     def __init__(self, root):
         self.root = root
@@ -62,6 +124,16 @@ class TafustApp:
 
         os.makedirs(DATA_DIR, exist_ok=True)
         self.os_type = platform.system()
+        
+        # Chargement de la Whitelist au démarrage
+        global CURRENT_WHITELIST
+        CURRENT_WHITELIST = load_whitelist()
+        
+        # Style & Thème
+        self.style = ttk.Style()
+        self.style.theme_use('clam') # Thème moderne
+        self.style.configure("Treeview.Heading", font=("Helvetica", 10, "bold"))
+        
         self.setup_ui()
 
     def setup_ui(self):
@@ -111,17 +183,43 @@ class TafustApp:
         )
         self.scan_btn.pack(pady=10)
 
-        # --- Results ---
-        self.results_area = scrolledtext.ScrolledText(
-            self.root, font=("Consolas", 10), bg="white", fg="#212529", padx=10, pady=10
-        )
-        self.results_area.pack(padx=20, pady=10, fill="both", expand=True)
-        self.results_area.insert(tk.END, f"Cross-platform analyzer ready for {self.os_type}...\n")
+        # --- Results Table (Treeview) ---
+        self.table_frame = tk.Frame(self.root, bg="#f8f9fa")
+        self.table_frame.pack(padx=20, pady=10, fill="both", expand=True)
+
+        columns = ("proto", "port", "service", "addr", "proc", "score", "status")
+        self.tree = ttk.Treeview(self.table_frame, columns=columns, show="headings", selectmode="browse")
+        
+        # Define Headings & Sorting
+        col_names = {
+            "proto": "Protocole", "port": "Port", "service": "Service",
+            "addr": "Adresse", "proc": "Processus", "score": "Score", "status": "Status"
+        }
+        for col in columns:
+            self.tree.heading(col, text=col_names[col], command=lambda c=col: self.sort_column(c, False))
+            self.tree.column(col, width=100, anchor="center")
+
+        # Scrollbar
+        self.scrollbar = ttk.Scrollbar(self.table_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=self.scrollbar.set)
+        
+        self.tree.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        # Color Tags
+        self.tree.tag_configure("safe", background="#d4edda", foreground="#155724")
+        self.tree.tag_configure("warning", background="#fff3cd", foreground="#856404")
+        self.tree.tag_configure("suspicious", background="#f8d7da", foreground="#721c24")
+
+        # Double Click Event
+        self.tree.bind("<Double-1>", self.on_double_click)
+        
+        self.scan_results = [] # Store full data for details
 
     def start_scan(self):
         self.scan_btn.config(text="Analyzing...", state="disabled", bg="#6c757d")
-        self.results_area.delete(1.0, tk.END)
-        self.results_area.insert(tk.END, f"🔍 Initializing Smart Risk Engine on {self.os_type}...\n")
+        for item in self.tree.get_children():
+            self.tree.delete(item)
         threading.Thread(target=self.run_analysis, daemon=True).start()
 
     def run_analysis(self):
@@ -231,93 +329,26 @@ class TafustApp:
 
     def calculate_risk_score(self, entry):
         """
-        Advanced Context-Aware Risk Engine (EDR-style).
-        Analyzes Process Trust, Network Exposure, and Port Reputation.
+        Calculates risk score using the logic provided by the user.
         """
-        reasons = []
-        
-        # --- PHASE 1: Normalization & Classification ---
-        proc_raw = entry["proc"]
-        proc_norm = proc_raw.lower()
-        if proc_norm.endswith(".exe"): proc_norm = proc_norm[:-4]
-        
-        # Determine Trust Level
-        if proc_norm in CORE_SYSTEM:
-            trust_level = "CORE"
-            base_score = 0
-            reasons.append(f"✅ CORE SYSTEM: '{proc_raw}' is a verified Windows system component.")
-        elif any(app in proc_norm for app in TRUSTED_APPS):
-            trust_level = "TRUSTED"
-            base_score = 10
-            reasons.append(f"✅ TRUSTED APP: '{proc_raw}' is a recognized legitimate application.")
-        elif any(tool in proc_norm for tool in DEV_TOOLS):
-            trust_level = "DEV"
-            base_score = 20
-            reasons.append(f"🛠️ DEV TOOL: '{proc_raw}' is a known developer utility.")
-        else:
-            trust_level = "UNKNOWN"
-            base_score = 60
-            reasons.append(f"❓ UNKNOWN: '{proc_raw}' is not in the local trust database.")
-
-        # --- PHASE 2: Exposure Analysis ---
-        is_localhost = entry["ip"] in ["127.0.0.1", "::1", "0:0:0:0:0:0:0:1"]
-        if is_localhost:
-            exposure_multiplier = 0.5
-            reasons.append("🔒 LOCAL ONLY: Service is isolated to localhost (significant risk reduction).")
-        else:
-            exposure_multiplier = 1.2
-            reasons.append("🌐 NETWORK EXPOSED: Service is listening on a network interface.")
-
-        # --- PHASE 3: Port Reputation & Mapping ---
+        proc_name = entry["proc"]
         port = entry["port"]
-        is_common = port in COMMON_SERVICES
-        is_expected = port in EXPECTED_PORTS.get(proc_norm, [])
-        is_dynamic = 49152 <= port <= 65535
-
-        port_score = 0
-        if is_expected:
-            port_score -= 20
-            reasons.append(f"🎯 EXPECTED PORT: Port {port} is standard for {proc_raw}.")
-        elif is_common:
-            port_score -= 10
-            reasons.append(f"📋 COMMON PORT: Port {port} matches a known service ({COMMON_SERVICES[port]}).")
-        elif is_dynamic:
-            port_score += 5
-            reasons.append(f"🔄 DYNAMIC RANGE: Port {port} is in the standard ephemeral range.")
-        else:
-            port_score += 25
-            reasons.append(f"⚠️ UNUSUAL PORT: Port {port} is non-standard for this system.")
-
-        # --- PHASE 4: Decision Logic (Final Scoring) ---
-        # Calculation: (Base + Port) * Exposure
-        final_score = (base_score + port_score) * exposure_multiplier
+        addr = entry["ip"]
         
-        # Apply Guardrails
-        if trust_level == "CORE":
-            final_score = min(final_score, 15) # Never above SAFE
-        elif trust_level == "DEV" and is_localhost:
-            final_score = min(final_score, 25) # Always SAFE if local dev
-        elif trust_level == "TRUSTED" and is_common:
-            final_score = min(final_score, 30) # Likely SAFE
-
-        # Final Status Determination
-        final_score = max(0, min(100, final_score))
+        # Call the user's risk score function
+        final_score, reasoning = get_risk_score(proc_name, port, addr)
         
-        # EDR-style Decision Criteria
+        # Determine Status for UI (EDR-style)
         if final_score < 35:
             status = "SAFE"
         elif final_score < 75:
             status = "WARNING"
         else:
-            # SUSPICIOUS only if: Unknown process AND Network Exposed AND Unusual Port
-            if trust_level == "UNKNOWN" and not is_localhost and not is_common:
-                status = "SUSPICIOUS"
-            else:
-                status = "WARNING" # Downgrade if any safety factor exists
+            status = "SUSPICIOUS"
 
-        self.log_debug(f"EDR Analysis: {proc_raw} | Trust: {trust_level} | Final Score: {final_score:.1f} | Decision: {status}")
+        self.log_debug(f"EDR Analysis: {proc_name} | Final Score: {final_score} | Decision: {status}")
         
-        return int(final_score), status, reasons
+        return int(final_score), status, reasoning
 
     def analyze_risk(self, data):
         for entry in data:
@@ -329,30 +360,62 @@ class TafustApp:
         return data
 
     def update_ui(self, data):
-        self.results_area.delete(1.0, tk.END)
-        self.results_area.insert(tk.END, f"✅ Scan Complete on {self.os_type}! Found {len(data)} services.\n\n")
-        
+        self.scan_results = data
         counts = {"SAFE": 0, "WARNING": 0, "SUSPICIOUS": 0}
         icons = {"SAFE": "✅", "WARNING": "⚠️", "SUSPICIOUS": "🚨"}
         
         for e in data:
-            counts[e["status"]] += 1
-            icon = icons[e["status"]]
-            self.results_area.insert(tk.END, f"[{e['proto']}] Port: {e['port']} → {e['service']}\n")
-            self.results_area.insert(tk.END, f"   📍 Address: {e['ip']} | ⚙️ Process: {e['proc']}\n")
-            self.results_area.insert(tk.END, f"   📊 Risk Score: {e['score']}/100 | Status: {e['status']} {icon}\n")
-            self.results_area.insert(tk.END, "   📝 Reasoning:\n")
-            for r in e["reasons"]:
-                self.results_area.insert(tk.END, f"      - {r}\n")
-            self.results_area.insert(tk.END, "-"*60 + "\n")
+            status = e["status"]
+            counts[status] += 1
+            
+            # Tag for coloring
+            tag = status.lower()
+            
+            self.tree.insert("", tk.END, values=(
+                e["proto"], e["port"], e["service"],
+                e["ip"], e["proc"], f"{e['score']}/100", status
+            ), tags=(tag,))
 
         for key, count in counts.items():
             self.summary_labels[key].config(text=f"{key} {icons[key]}: {count}")
         
         self.finish_scan()
 
+    def on_double_click(self, event):
+        """Shows detailed reasoning for the selected process."""
+        item_id = self.tree.identify_row(event.y)
+        if not item_id: return
+        
+        values = self.tree.item(item_id, "values")
+        proc_name = values[4]
+        port = values[1]
+        
+        # Find original data entry
+        entry = next((e for e in self.scan_results if str(e["port"]) == str(port) and e["proc"] == proc_name), None)
+        
+        if entry:
+            details = f"🔍 Details pour {proc_name} (Port {port})\n"
+            details += "-"*40 + "\n"
+            details += "\n".join([f"• {r}" for r in entry["reasons"]])
+            messagebox.showinfo("🧿 Tafust - Risk Analysis", details)
+
+    def sort_column(self, col, reverse):
+        """Sorts the Treeview column."""
+        l = [(self.tree.set(k, col), k) for k in self.tree.get_children('')]
+        
+        # Try numeric sort if possible
+        try:
+            l.sort(key=lambda t: int(t[0].split('/')[0]) if '/' in t[0] else int(t[0]), reverse=reverse)
+        except ValueError:
+            l.sort(reverse=reverse)
+
+        for index, (val, k) in enumerate(l):
+            self.tree.move(k, '', index)
+
+        self.tree.heading(col, command=lambda: self.sort_column(col, not reverse))
+
     def finish_scan(self, error=None):
-        if error: self.results_area.insert(tk.END, error)
+        if error: messagebox.showerror("Error", error)
         self.scan_btn.config(text="SCAN SYSTEM PORTS", state="normal", bg="#1a73e8")
 
 if __name__ == "__main__":

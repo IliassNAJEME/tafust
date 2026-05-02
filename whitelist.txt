@@ -1,0 +1,13 @@
+svchost.exe
+lsass.exe
+wininit.exe
+services.exe
+spoolsv.exe
+system
+antigravity.exe
+onedrive.sync.service.exe
+wmpnetwk.exe
+asus_framework.exe
+rogliveservice.exe
+armourycrate.usersessionhelper.exe
+mosquitto.exe
