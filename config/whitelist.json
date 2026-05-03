@@ -1,0 +1,1 @@
+{"authorized_services": ["ssh", "http", "https", "postgresql", "mysql", "nginx", "language_server", "antigravity"]}

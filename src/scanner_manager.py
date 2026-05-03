@@ -9,28 +9,37 @@ from datetime import datetime
 
 # Configuration
 DATA_DIR = "tafust_data"
-WHITELIST_FILE = "whitelist.txt"
-GO_ENGINE_PATH = os.path.join("engine", "scanner.exe")
+# Résolution robuste du chemin de configuration
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WHITELIST_FILE = os.path.join(BASE_DIR, "config", "whitelist.json")
+GO_ENGINE_PATH = os.path.join(BASE_DIR, "engine", "scanner.exe")
+
+# Listes de confiance pour réduire les faux positifs
+KNOWN_BROWSERS = ["brave", "chrome", "firefox", "msedge", "safari", "opera"]
 
 class ScannerManager:
-    def __init__(self):
+    def __init__(self, exclude_local=False):
         os.makedirs(DATA_DIR, exist_ok=True)
         self.os_type = platform.system()
+        self.exclude_local = exclude_local
         self.whitelist = self.load_whitelist()
         self.last_results = []
 
     def load_whitelist(self):
         whitelist = set()
+        print(f"🔍 [DEBUG] Recherche de la whitelist : {WHITELIST_FILE}")
         try:
             if os.path.exists(WHITELIST_FILE):
                 with open(WHITELIST_FILE, "r", encoding="utf-8") as f:
-                    for line in f:
-                        proc = line.strip().lower()
-                        if proc:
-                            if proc.endswith(".exe"): proc = proc[:-4]
-                            whitelist.add(proc)
-        except Exception:
-            pass
+                    data = json.load(f)
+                    services = data.get("authorized_services", [])
+                    for s in services:
+                        whitelist.add(s.strip().lower())
+                print(f"✅ [DEBUG] Whitelist chargée : {len(whitelist)} services autorisés.")
+            else:
+                print(f"⚠️ [DEBUG] Fichier whitelist non trouvé à l'emplacement : {WHITELIST_FILE}")
+        except Exception as e:
+            print(f"❌ [DEBUG] Erreur critique lors du chargement de la whitelist : {e}")
         return whitelist
 
     def get_risk_score(self, process_name, port, address):
@@ -39,12 +48,30 @@ class ScannerManager:
         proc_norm = process_name.lower()
         if proc_norm.endswith(".exe"): proc_norm = proc_norm[:-4]
 
-        if proc_norm in self.whitelist:
-            score += 0
-            reasoning.append(f"✅ TRUSTED: '{process_name}' est dans la whitelist.")
-        else:
-            score += 50
-            reasoning.append(f"❓ UNKNOWN: '{process_name}' n'est pas reconnu.")
+        # 1. Vérification Whitelist (Services critiques autorisés)
+        is_whitelisted = False
+        for whitelisted_service in self.whitelist:
+            if whitelisted_service == proc_norm or whitelisted_service in proc_norm:
+                is_whitelisted = True
+                break
+        
+        if is_whitelisted:
+            return 0, [f"✅ [SAFE] Whitelisted: '{process_name}' est un service autorisé."]
+
+        # 2. Détection de Navigateurs Connus (Réduction de faux positifs)
+        is_browser = any(browser in proc_norm for browser in KNOWN_BROWSERS)
+        if is_browser:
+            if port == 5353:
+                return 10, [f"ℹ️ [KNOWN BROWSER] '{process_name}' utilise mDNS (Port 5353). Activité réseau normale."]
+            return 12, [f"ℹ️ [KNOWN BROWSER] '{process_name}' est un navigateur identifié."]
+
+        # 3. Cas particulier : mDNS (Port 5353) hors navigateur
+        if port == 5353:
+            return 20, ["📡 [NETWORK] Port 5353 (mDNS) détecté. Souvent utilisé pour la découverte de services."]
+
+        # 4. Scoring par défaut pour processus inconnu
+        score += 50
+        reasoning.append(f"❓ UNKNOWN: '{process_name}' n'est pas reconnu.")
 
         addr_clean = address.strip("[]").lower()
         is_local = addr_clean in ["127.0.0.1", "::1", "localhost"]
@@ -93,16 +120,36 @@ class ScannerManager:
             callback_error(str(e))
 
     def analyze_risk(self, data):
+        filtered_data = []
         for entry in data:
+            addr_clean = entry["ip"].strip("[]").lower()
+            is_local = addr_clean in ["127.0.0.1", "::1", "localhost"]
+            
+            # Tâche 3 : Filtrage local
+            if self.exclude_local and is_local:
+                continue
+
             score, reasoning = self.get_risk_score(entry["proc"], entry["port"], entry["ip"])
-            status = "SAFE" if score < 35 else "WARNING" if score < 75 else "SUSPICIOUS"
+            
+            # Nouvelle échelle de statut selon les directives de l'utilisateur
+            proc_name = str(entry.get("proc", "")).lower()
+            if "unknown" in proc_name or proc_name == "pid ?":
+                status = "UNKNOWN"
+            elif score == 0:
+                status = "SAFE"
+            elif score < 50:
+                status = "SUSPICIOUS"
+            else:
+                status = "DANGER"
+
             entry.update({
                 "score": score, 
                 "status": status, 
                 "reasons": reasoning,
                 "service": "Service" # Placeholder
             })
-        return data
+            filtered_data.append(entry)
+        return filtered_data
 
     def get_result_by_port_and_proc(self, port, proc_name):
         return next((e for e in self.last_results if str(e["port"]) == str(port) and e["proc"] == proc_name), None)
