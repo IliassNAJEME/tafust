@@ -1,11 +1,20 @@
 import subprocess
 import json
 import os
+import sys
 import platform
 import psutil
 import threading
 import re
 from datetime import datetime
+from src import security_analyst
+
+# Force UTF-8 stdout pour éviter les UnicodeEncodeError sur Windows (cp1252)
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 # Configuration
 DATA_DIR = "tafust_data"
@@ -27,7 +36,7 @@ class ScannerManager:
 
     def load_whitelist(self):
         whitelist = set()
-        print(f"🔍 [DEBUG] Recherche de la whitelist : {WHITELIST_FILE}")
+        print(f"[DEBUG] Recherche de la whitelist : {WHITELIST_FILE}")
         try:
             if os.path.exists(WHITELIST_FILE):
                 with open(WHITELIST_FILE, "r", encoding="utf-8") as f:
@@ -35,11 +44,11 @@ class ScannerManager:
                     services = data.get("authorized_services", [])
                     for s in services:
                         whitelist.add(s.strip().lower())
-                print(f"✅ [DEBUG] Whitelist chargée : {len(whitelist)} services autorisés.")
+                print(f"[OK] Whitelist chargee : {len(whitelist)} services autorises.")
             else:
-                print(f"⚠️ [DEBUG] Fichier whitelist non trouvé à l'emplacement : {WHITELIST_FILE}")
+                print(f"[WARN] Fichier whitelist non trouve : {WHITELIST_FILE}")
         except Exception as e:
-            print(f"❌ [DEBUG] Erreur critique lors du chargement de la whitelist : {e}")
+            print(f"[ERR] Erreur lors du chargement de la whitelist : {e}")
         return whitelist
 
     def get_risk_score(self, process_name, port, address):
@@ -101,7 +110,7 @@ class ScannerManager:
 
     def _scan_thread(self, callback_success, callback_error):
         try:
-            # 1. Fallback Python
+            # 1. Collecte des ports (fallback Python)
             if self.os_type == "Windows":
                 raw_data = self.get_windows_ports()
                 parsed_data = self.parse_windows_output(raw_data)
@@ -109,47 +118,27 @@ class ScannerManager:
                 raw_data = self.get_linux_ports()
                 parsed_data = self.parse_linux_output(raw_data)
 
-            # 2. Go Backend data (Optional merge)
-            go_data = self.run_go_scan()
-            
-            # 3. Analyze
-            analyzed_data = self.analyze_risk(parsed_data)
-            self.last_results = analyzed_data
-            callback_success(analyzed_data)
+            # 2. (Optionnel) Données du moteur Go
+            self.run_go_scan()
+
+            # 3. Filtrage local si activé
+            if self.exclude_local:
+                parsed_data = [
+                    e for e in parsed_data
+                    if not security_analyst._is_local_address(e.get("ip", ""))
+                ]
+
+            # 4. Analyse intelligente via security_analyst
+            report = security_analyst.analyze(parsed_data)
+            self.last_results = parsed_data   # Conservé pour l'export JSON brut
+            self.last_report   = report        # Rapport structuré pour l'UI
+            callback_success(report)
         except Exception as e:
             callback_error(str(e))
 
     def analyze_risk(self, data):
-        filtered_data = []
-        for entry in data:
-            addr_clean = entry["ip"].strip("[]").lower()
-            is_local = addr_clean in ["127.0.0.1", "::1", "localhost"]
-            
-            # Tâche 3 : Filtrage local
-            if self.exclude_local and is_local:
-                continue
-
-            score, reasoning = self.get_risk_score(entry["proc"], entry["port"], entry["ip"])
-            
-            # Nouvelle échelle de statut selon les directives de l'utilisateur
-            proc_name = str(entry.get("proc", "")).lower()
-            if "unknown" in proc_name or proc_name == "pid ?":
-                status = "UNKNOWN"
-            elif score == 0:
-                status = "SAFE"
-            elif score < 50:
-                status = "SUSPICIOUS"
-            else:
-                status = "DANGER"
-
-            entry.update({
-                "score": score, 
-                "status": status, 
-                "reasons": reasoning,
-                "service": "Service" # Placeholder
-            })
-            filtered_data.append(entry)
-        return filtered_data
+        """Conservé pour compatibilité — désormais délégué à security_analyst."""
+        return security_analyst.analyze(data)
 
     def get_result_by_port_and_proc(self, port, proc_name):
         return next((e for e in self.last_results if str(e["port"]) == str(port) and e["proc"] == proc_name), None)
