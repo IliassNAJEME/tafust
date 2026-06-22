@@ -1,222 +1,242 @@
-"""
-security_analyst.py — Moteur d'Audit de Sécurité Tafust
-Pipeline : Normalisation → Catégorisation → Contextualisation → Rapport structuré
-
-Rapport en 4 sections :
-  1. Résumé Exécutif
-  2. Matrice des Risques
-  3. Analyse Technique Détaillée
-  4. Recommandations de Hardening
-"""
-
-from datetime import datetime
 from collections import defaultdict
+from datetime import datetime
 
-# ==============================================================================
-# BASE DE CONNAISSANCE
-# ==============================================================================
 
-# Composants Windows natifs — signature OS, toujours légitimes
 WINDOWS_SYSTEM_PROCS = {
-    "system", "svchost.exe", "lsass.exe", "wininit.exe", "winlogon.exe",
-    "services.exe", "spoolsv.exe", "csrss.exe", "smss.exe", "ntoskrnl.exe",
-    "explorer.exe", "dwm.exe", "taskhost.exe", "taskhostw.exe", "sihost.exe",
-    "runtimebroker.exe", "fontdrvhost.exe", "audiodg.exe", "searchindexer.exe",
-    "wuauclt.exe", "msdtc.exe", "dllhost.exe", "conhost.exe", "ctfmon.exe",
+    "system",
+    "svchost.exe",
+    "lsass.exe",
+    "wininit.exe",
+    "winlogon.exe",
+    "services.exe",
+    "spoolsv.exe",
+    "csrss.exe",
+    "smss.exe",
+    "ntoskrnl.exe",
+    "explorer.exe",
+    "dwm.exe",
+    "taskhost.exe",
+    "taskhostw.exe",
+    "sihost.exe",
+    "runtimebroker.exe",
+    "fontdrvhost.exe",
+    "audiodg.exe",
+    "searchindexer.exe",
+    "wuauclt.exe",
+    "msdtc.exe",
+    "dllhost.exe",
+    "conhost.exe",
+    "ctfmon.exe",
 }
 
-# Mots-clés d'éditeurs de confiance (logiciels tiers connus)
 TRUSTED_VENDOR_KEYWORDS = [
-    "armourycrate", "roglive", "asus", "manycam", "antigravity",
-    "language_server", "onedrive", "microsoftonedrive",
+    "armourycrate",
+    "roglive",
+    "asus",
+    "manycam",
+    "antigravity",
+    "language_server",
+    "onedrive",
+    "microsoftonedrive",
 ]
 
-# Ports sensibles — nécessitent une justification contextuelle
+REMOTE_ACCESS_KEYWORDS = [
+    "anydesk",
+    "teamviewer",
+    "rustdesk",
+    "vnc",
+    "screenconnect",
+    "splashtop",
+]
+
 SENSITIVE_PORTS = {
-    21:   ("FTP",              "Transfert de fichiers non chiffré. Exposition critique."),
-    22:   ("SSH",              "Accès shell distant. Surveiller si exposé hors localhost."),
-    23:   ("Telnet",           "Protocole non chiffré obsolète. À désactiver immédiatement."),
-    3389: ("RDP",              "Bureau à distance Windows. Vecteur d'attaque fréquent."),
-    445:  ("SMB",              "Partage fichiers Windows. Sensible aux ransomwares (WannaCry)."),
-    139:  ("NetBIOS",          "Partage réseau legacy. Désactivable en environnement moderne."),
-    5900: ("VNC",              "Bureau à distance non Microsoft. Vérifier l'authentification."),
-    6379: ("Redis",            "Base de données en mémoire. Critique si exposée sans auth."),
-    9200: ("Elasticsearch",    "Moteur de recherche. Souvent exposé sans authentification."),
+    21: ("FTP", "Unencrypted file transfer service."),
+    22: ("SSH", "Remote shell access. Monitor closely when exposed."),
+    23: ("Telnet", "Legacy unencrypted remote access."),
+    3389: ("RDP", "Windows remote desktop service."),
+    445: ("SMB", "Windows file sharing. Frequent lateral movement target."),
+    139: ("NetBIOS", "Legacy Windows sharing protocol."),
+    5900: ("VNC", "Remote desktop service."),
+    6379: ("Redis", "In-memory database, risky if exposed without auth."),
+    9200: ("Elasticsearch", "Commonly exposed search engine endpoint."),
 }
 
-# Catalogue de services avec descriptions techniques
 SERVICE_CATALOG = {
-    135:   ("RPC Endpoint Mapper",        "Windows natif — Broker de communication RPC/COM. Requis par l'OS."),
-    139:   ("NetBIOS Session",            "Partage réseau Windows legacy. Présent sur interfaces physiques."),
-    445:   ("SMB (File Sharing)",         "Partage de fichiers Windows. Actif sur le réseau local."),
-    554:   ("RTSP (Media Streaming)",     "Windows Media Player Network Sharing. Service de streaming multimédia."),
-    1883:  ("MQTT Broker (Mosquitto)",    "Broker IoT open-source. Isolé sur loopback — usage développement."),
-    2869:  ("UPnP/SSDP",                 "Découverte de périphériques réseau. Windows natif."),
-    3389:  ("RDP",                        "Bureau à distance Windows."),
-    5040:  ("CDPSvc",                     "Connected Devices Platform. Service Windows natif."),
-    7680:  ("WUDO",                       "Windows Update Delivery Optimization — partage de mises à jour."),
-    10243: ("UPnP HTTP",                  "Service UPnP Windows. Natif."),
-    12177: ("ArmouryCrate IPC",           "Interface de communication interne ASUS Armoury Crate."),
-    27017: ("MongoDB",                    "Base de données NoSQL. Isolée sur loopback — usage développement."),
-    42050: ("OneDrive Sync",              "Service de synchronisation Microsoft OneDrive."),
-    49664: ("RPC Dynamique (lsass)",      "Port RPC dynamique alloué par l'OS Windows. Normal."),
-    49665: ("RPC Dynamique (wininit)",    "Port RPC dynamique alloué par l'OS Windows. Normal."),
-    49666: ("RPC Dynamique (svchost)",    "Port RPC dynamique alloué par l'OS Windows. Normal."),
-    49667: ("RPC Dynamique (svchost)",    "Port RPC dynamique alloué par l'OS Windows. Normal."),
-    49668: ("RPC Dynamique (spoolsv)",    "Port RPC dynamique alloué par l'OS Windows. Normal."),
-    49670: ("RPC Dynamique (services)",   "Port RPC dynamique alloué par l'OS Windows. Normal."),
+    135: ("RPC Endpoint Mapper", "Windows RPC / COM broker."),
+    139: ("NetBIOS Session", "Windows local network sharing."),
+    445: ("SMB File Sharing", "Windows file sharing."),
+    554: ("RTSP Media Sharing", "Windows Media Player network sharing."),
+    1883: ("MQTT Broker", "Common MQTT development broker."),
+    2869: ("UPnP SSDP", "Windows device discovery service."),
+    3389: ("RDP", "Windows remote desktop."),
+    5040: ("CDPSvc", "Connected Devices Platform service."),
+    7680: ("WUDO", "Windows Update Delivery Optimization."),
+    10243: ("UPnP HTTP", "Windows UPnP service."),
+    12177: ("ArmouryCrate IPC", "ASUS Armoury Crate local IPC."),
+    27017: ("MongoDB", "MongoDB database."),
+    42050: ("OneDrive Sync", "Microsoft OneDrive sync service."),
+    49664: ("Dynamic RPC (lsass)", "Windows dynamic RPC port."),
+    49665: ("Dynamic RPC (wininit)", "Windows dynamic RPC port."),
+    49666: ("Dynamic RPC (svchost)", "Windows dynamic RPC port."),
+    49667: ("Dynamic RPC (svchost)", "Windows dynamic RPC port."),
+    49668: ("Dynamic RPC (spoolsv)", "Windows dynamic RPC port."),
+    49670: ("Dynamic RPC (services)", "Windows dynamic RPC port."),
+    7070: ("Remote Access Service", "Non-standard remote access service."),
 }
 
-# Processus en watchlist : légitimes mais potentiellement superflus
-# Format : proc_normalized → (label, justification, service_name_ps, bash_cmd)
 WATCHLIST_PROCS = {
     "wmpnetwk.exe": (
         "Windows Media Player Network Sharing",
-        "Service de partage multimédia WMP. Exposé sur 0.0.0.0 (toutes interfaces). "
-        "Non nécessaire si le partage de médias sur le réseau n'est pas utilisé.",
+        "Optional media sharing service. Safe when intentional, but often unnecessary.",
         "WMPNetworkSvc",
         None,
     ),
     "mosquitto.exe": (
         "Mosquitto MQTT Broker",
-        "Broker MQTT open-source. Isolé sur loopback (127.0.0.1/::1) — "
-        "risque d'intrusion externe nul. Légitime pour le développement IoT.",
+        "MQTT broker bound locally for development use.",
         "mosquitto",
         "sudo systemctl stop mosquitto",
     ),
     "mongod.exe": (
         "MongoDB",
-        "Base de données NoSQL. Isolée sur loopback (127.0.0.1) — "
-        "non exposée au réseau. Standard en développement local.",
+        "MongoDB bound locally for development use.",
         "MongoDB",
         "sudo systemctl stop mongod",
     ),
 }
 
-# ==============================================================================
-# HELPERS
-# ==============================================================================
 
-def _normalize(name: str) -> str:
-    return name.strip().lower()
+def normalize(name: str) -> str:
+    return (name or "").strip().lower()
 
 
-def _is_local_address(ip: str) -> bool:
-    """Retourne True si l'adresse est loopback (trafic local uniquement)."""
-    clean = ip.strip("[]").lower()
+def is_local_address(ip: str) -> bool:
+    clean = (ip or "").strip("[]").lower()
     return clean in ("127.0.0.1", "::1", "localhost", "0:0:0:0:0:0:0:1")
 
 
 def _is_system_process(proc: str) -> bool:
-    return _normalize(proc) in WINDOWS_SYSTEM_PROCS
+    return normalize(proc) in WINDOWS_SYSTEM_PROCS
 
 
 def _is_vendor_process(proc: str) -> bool:
-    norm = _normalize(proc)
-    return any(kw in norm for kw in TRUSTED_VENDOR_KEYWORDS)
+    norm = normalize(proc)
+    return any(keyword in norm for keyword in TRUSTED_VENDOR_KEYWORDS)
+
+
+def _is_remote_access_tool(proc: str) -> bool:
+    norm = normalize(proc)
+    return any(keyword in norm for keyword in REMOTE_ACCESS_KEYWORDS)
 
 
 def _exposure_label(ip: str) -> str:
-    """Retourne une description lisible de l'exposition réseau."""
-    clean = ip.strip("[]").lower()
-    if _is_local_address(ip):
-        return "Loopback (127.0.0.1/::1) — trafic local uniquement, risque d'intrusion externe : NUL"
+    clean = (ip or "").strip("[]").lower()
+    if is_local_address(ip):
+        return "Loopback only - external intrusion risk is minimal."
     if clean in ("0.0.0.0", "::"):
-        return "Toutes interfaces (0.0.0.0/[::]) — exposé sur l'ensemble des cartes réseau"
-    return f"Interface réseau physique ({ip}) — exposé sur le LAN"
+        return "Listening on all interfaces."
+    return f"Listening on network interface {ip}."
 
 
-# ==============================================================================
-# CLASSIFICATION D'UNE ENTRÉE
-# ==============================================================================
+def _local_trust_summary(entry: dict) -> str:
+    facts = []
+    if entry.get("signature_valid"):
+        facts.append("valid signature")
+    if entry.get("publisher"):
+        facts.append(f"publisher={entry['publisher']}")
+    if entry.get("company_name"):
+        facts.append(f"company={entry['company_name']}")
+    if entry.get("path_trusted"):
+        facts.append("trusted install path")
+    if entry.get("sha256"):
+        facts.append(f"sha256={entry['sha256'][:12]}...")
+    if entry.get("reputation_source") == "virustotal":
+        facts.append(entry.get("reputation_summary", "VirusTotal consulted"))
+    return "; ".join(facts)
+
 
 def _classify_entry(entry: dict) -> dict:
-    """
-    Enrichit une entrée brute avec :
-      category   : SYSTÈME_LÉGITIME | À_SURVEILLER | ALERTE
-      risk_level : TRÈS FAIBLE | FAIBLE | MODÉRÉ | ÉLEVÉ | CRITIQUE
-      label      : Nom lisible du service
-      justification : Explication technique du classement
-      powershell : Commandes de remédiation (si applicable)
-      bash       : Commandes Bash équivalentes (si applicable)
-      group      : Nom de groupe normalisé (pour regroupement dans l'UI)
-    """
-    proc     = entry.get("proc", "Inconnu")
-    port     = entry.get("port", 0)
-    ip       = entry.get("ip", "?")
-    proto    = entry.get("proto", "TCP")
-    norm     = _normalize(proc)
-    is_local = _is_local_address(ip)
+    proc = entry.get("proc", "Unknown")
+    port = entry.get("port", 0)
+    ip = entry.get("ip", "?")
+    proto = entry.get("proto", "TCP")
+    norm = normalize(proc)
+    is_local = is_local_address(ip)
+    cloud_verdict = entry.get("reputation_verdict", "unknown")
+    trusted_signature = bool(entry.get("signature_valid"))
+    trusted_publisher = bool(entry.get("publisher_trusted"))
+    trusted_path = bool(entry.get("path_trusted"))
+    trusted_company = bool(entry.get("company_name")) and trusted_publisher
+    local_evidence = _local_trust_summary(entry)
 
     catalog_label, catalog_desc = SERVICE_CATALOG.get(port, ("", ""))
-    exposure = _exposure_label(ip)
-
     result = {
-        "proc":          proc,
-        "port":          port,
-        "ip":            ip,
-        "proto":         proto,
-        "label":         catalog_label or proc,
+        "proc": proc,
+        "port": port,
+        "ip": ip,
+        "proto": proto,
+        "pid": entry.get("pid"),
+        "path": entry.get("path", ""),
+        "publisher": entry.get("publisher", ""),
+        "company_name": entry.get("company_name", ""),
+        "signature_status": entry.get("signature_status", "Unavailable"),
+        "sha256": entry.get("sha256", ""),
+        "reputation_source": entry.get("reputation_source", "local"),
+        "reputation_verdict": cloud_verdict,
+        "reputation_summary": entry.get("reputation_summary", ""),
+        "label": catalog_label or proc,
         "justification": catalog_desc or "",
-        "exposure":      exposure,
-        "category":      "SYSTÈME_LÉGITIME",
-        "risk_level":    "TRÈS FAIBLE",
-        "risk_icon":     "🟢",
-        "powershell":    [],
-        "bash":          [],
-        "is_local":      is_local,
-        "group":         norm,
+        "exposure": _exposure_label(ip),
+        "category": "SYSTÈME_LÉGITIME",
+        "risk_level": "TRÈS FAIBLE",
+        "risk_icon": "🟢",
+        "powershell": [],
+        "bash": [],
+        "is_local": is_local,
+        "group": norm,
         "hardening_note": "",
     }
 
-    # ── RÈGLE 1 : Composant Windows natif ─────────────────────────────────────
-    if _is_system_process(proc):
-        result["category"]      = "SYSTÈME_LÉGITIME"
-        result["risk_level"]    = "TRÈS FAIBLE"
-        result["risk_icon"]     = "🟢"
+    if cloud_verdict == "malicious":
+        result["category"] = "ALERTE"
+        result["risk_level"] = "CRITIQUE"
+        result["risk_icon"] = "🔴"
         result["justification"] = (
-            catalog_desc or
-            f"Processus noyau/OS Windows ({proc}). Signé Microsoft. "
-            "Présence normale quelle que soit l'interface d'écoute."
+            f"Cloud reputation marked '{proc}' as malicious. {entry.get('reputation_summary', '')}"
         )
-        # SMB/NetBIOS sur interface physique → note de hardening, mais pas d'alerte
+        return result
+
+    if cloud_verdict == "suspicious":
+        result["category"] = "ALERTE"
+        result["risk_level"] = "ÉLEVÉ"
+        result["risk_icon"] = "🔴"
+        result["justification"] = (
+            f"Cloud reputation marked '{proc}' as suspicious. {entry.get('reputation_summary', '')}"
+        )
+        return result
+
+    if _is_system_process(proc):
+        result["justification"] = catalog_desc or f"Windows core service detected ({proc})."
         if port in (445, 139) and not is_local:
-            result["hardening_note"] = (
-                "Le partage SMB/NetBIOS est actif sur le réseau local. "
-                "Si aucun partage de fichiers n'est nécessaire, "
-                "envisagez de le désactiver pour réduire la surface d'attaque."
-            )
+            result["hardening_note"] = "Disable Windows file sharing if you do not use it on this machine."
             result["powershell"] = [
-                "# Désactiver le partage de fichiers Windows (si non utilisé) :",
-                'Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force',
+                "# Disable Windows file sharing if unused",
+                "Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force",
                 'Disable-NetAdapterBinding -Name "*" -ComponentID ms_server',
             ]
         return result
 
-    # ── RÈGLE 2 : Éditeur de confiance connu ──────────────────────────────────
-    if _is_vendor_process(proc):
-        result["category"]      = "SYSTÈME_LÉGITIME"
-        result["risk_level"]    = "TRÈS FAIBLE"
-        result["risk_icon"]     = "🟢"
-        result["justification"] = (
-            catalog_desc or
-            f"Logiciel tiers identifié ({proc}) — éditeur reconnu. "
-            f"Écoute sur {ip}:{port}. {exposure}."
-        )
-        return result
-
-    # ── RÈGLE 3 : Processus en watchlist ──────────────────────────────────────
     if norm in WATCHLIST_PROCS:
         label, justif, svc_ps, svc_bash = WATCHLIST_PROCS[norm]
-        result["label"]         = label
-        result["category"]      = "À_SURVEILLER"
-        result["risk_level"]    = "FAIBLE" if is_local else "MODÉRÉ"
-        result["risk_icon"]     = "🟡"
+        result["label"] = label
+        result["category"] = "À_SURVEILLER"
+        result["risk_level"] = "FAIBLE" if is_local else "MODÉRÉ"
+        result["risk_icon"] = "🟡"
         result["justification"] = justif
         result["hardening_note"] = justif
         if not is_local and svc_ps:
             result["powershell"] = [
-                f'# Arrêter et désactiver "{label}" :',
+                f"# Stop and disable {label}",
                 f'Stop-Service -Name "{svc_ps}" -Force',
                 f'Set-Service -Name "{svc_ps}" -StartupType Disabled',
             ]
@@ -224,214 +244,186 @@ def _classify_entry(entry: dict) -> dict:
             result["bash"] = [svc_bash]
         return result
 
-    # ── RÈGLE 4 : Port sensible connu ─────────────────────────────────────────
-    if port in SENSITIVE_PORTS:
+    if port in SENSITIVE_PORTS and not is_local and not (trusted_signature or trusted_publisher):
         sens_name, sens_desc = SENSITIVE_PORTS[port]
-        if is_local:
-            result["category"]      = "À_SURVEILLER"
-            result["risk_level"]    = "FAIBLE"
-            result["risk_icon"]     = "🟡"
-            result["justification"] = (
-                f"{sens_desc} — Isolé sur loopback. "
-                "Risque d'intrusion externe : NUL. À surveiller si un logiciel inconnu écoute."
-            )
-        else:
-            result["category"]      = "ALERTE"
-            result["risk_level"]    = "ÉLEVÉ" if port != 23 else "CRITIQUE"
-            result["risk_icon"]     = "🔴"
-            result["justification"] = (
-                f"{sens_desc} Processus '{proc}' expose le port {port} "
-                f"sur {ip}. Vérification immédiate recommandée."
-            )
-            result["powershell"] = [
-                f"# Identifier le processus sur le port {port} :",
-                f"Get-NetTCPConnection -LocalPort {port} | Select-Object State, LocalPort, OwningProcess | "
-                f"ForEach-Object {{ Get-Process -Id $_.OwningProcess }}",
-                f"# Bloquer le port via le pare-feu Windows :",
-                f'New-NetFirewallRule -DisplayName "Block_{sens_name}_{port}" '
-                f'-Direction Inbound -LocalPort {port} -Protocol TCP -Action Block',
-            ]
         result["label"] = sens_name
+        result["category"] = "ALERTE"
+        result["risk_level"] = "CRITIQUE" if port == 23 else "ÉLEVÉ"
+        result["risk_icon"] = "🔴"
+        result["justification"] = f"{sens_desc} Unknown or untrusted process exposed on the network."
         return result
 
-    # ── RÈGLE 5 : Processus inconnu ───────────────────────────────────────────
+    if _is_remote_access_tool(proc):
+        result["label"] = catalog_label or "Remote Access Tool"
+        result["category"] = "À_SURVEILLER"
+        result["risk_level"] = "MODÉRÉ" if not is_local else "FAIBLE"
+        result["risk_icon"] = "🟡"
+        if trusted_signature or trusted_publisher or cloud_verdict == "benign":
+            result["justification"] = (
+                f"Legitimate remote access software detected ({proc}). "
+                f"Monitor only if this service is intentional. {local_evidence}"
+            ).strip()
+        else:
+            result["justification"] = (
+                f"Remote access behavior detected for '{proc}'. Verify that it is expected. {local_evidence}"
+            ).strip()
+        result["hardening_note"] = "Disable this remote access tool when not needed."
+        return result
+
+    if (trusted_signature or trusted_company) and (trusted_publisher or trusted_path or cloud_verdict == "benign"):
+        result["category"] = "SYSTÈME_LÉGITIME" if is_local else "À_SURVEILLER"
+        result["risk_level"] = "TRÈS FAIBLE" if is_local else "FAIBLE"
+        result["risk_icon"] = "🟢" if is_local else "🟡"
+        result["justification"] = (
+            f"Trusted application evidence detected ({proc}). {local_evidence or 'Local trust evidence available.'}"
+        ).strip()
+        return result
+
+    if _is_vendor_process(proc):
+        result["justification"] = f"Known vendor application detected ({proc})."
+        return result
+
     if is_local:
-        result["category"]      = "À_SURVEILLER"
-        result["risk_level"]    = "FAIBLE"
-        result["risk_icon"]     = "🟡"
+        result["category"] = "À_SURVEILLER"
+        result["risk_level"] = "FAIBLE"
+        result["risk_icon"] = "🟡"
         result["justification"] = (
-            f"Processus non répertorié ({proc}) — écoute sur {ip}:{port}. "
-            "Port loopback uniquement : risque d'intrusion externe NUL. "
-            "Vérifier l'origine du processus si inconnu."
-        )
+            f"Unknown local-only process ({proc}). External risk is low, but origin should be confirmed. {local_evidence}"
+        ).strip()
     else:
-        result["category"]      = "ALERTE"
-        result["risk_level"]    = "ÉLEVÉ"
-        result["risk_icon"]     = "🔴"
+        result["category"] = "ALERTE"
+        result["risk_level"] = "ÉLEVÉ"
+        result["risk_icon"] = "🔴"
         result["justification"] = (
-            f"Processus inconnu '{proc}' exposé sur {ip}:{port}/{proto}. "
-            "Aucune correspondance dans la base de confiance. "
-            "Investigation requise."
+            f"Unknown network-exposed process ({proc}) on {ip}:{port}/{proto}. No strong trust evidence was found."
         )
         result["powershell"] = [
-            f"# Identifier le processus écoutant sur le port {port} :",
+            f"# Inspect the process listening on port {port}",
             f"Get-NetTCPConnection -LocalPort {port} | "
             "Select-Object LocalPort, State, OwningProcess | "
             "ForEach-Object { Get-Process -Id $_.OwningProcess | Select-Object Name, Id, Path }",
         ]
-        result["hardening_note"] = (
-            f"Service inconnu '{proc}' exposé sur le réseau. "
-            "Vérifier dans le Gestionnaire de tâches → onglet Services."
-        )
+        result["hardening_note"] = f"Review process path, publisher, and installation source for '{proc}'."
 
     return result
 
 
-# ==============================================================================
-# NORMALISATION & REGROUPEMENT
-# ==============================================================================
-
 def _deduplicate(raw_results: list[dict]) -> list[dict]:
-    """Supprime les doublons exacts (même proc + port + ip)."""
     seen = set()
-    out  = []
-    for e in raw_results:
-        key = (_normalize(e.get("proc", "")), e.get("port", 0), e.get("ip", ""))
+    out = []
+    for entry in raw_results:
+        key = (
+            normalize(entry.get("proc", "")),
+            entry.get("port", 0),
+            entry.get("ip", ""),
+        )
         if key not in seen:
             seen.add(key)
-            out.append(e)
+            out.append(entry)
     return out
 
 
 def _group_legitimes(entries: list[dict]) -> list[dict]:
-    """
-    Regroupe les entrées SYSTÈME_LÉGITIME par nom de processus.
-    Réduit N lignes de svchost.exe en 1 entrée consolidée.
-    """
     groups: dict[str, list] = defaultdict(list)
-    for e in entries:
-        groups[_normalize(e["proc"])].append(e)
+    for entry in entries:
+        groups[normalize(entry["proc"])].append(entry)
 
     merged = []
     for proc_norm, group in groups.items():
-        ports    = sorted({e["port"] for e in group})
-        ips      = sorted({e["ip"] for e in group})
-        base     = group[0].copy()
-        base["ports_list"]  = ports
-        base["ips_list"]    = ips
-        base["count"]       = len(group)
-        # Agréger les notes de hardening non vides
-        hardening = next((e["hardening_note"] for e in group if e.get("hardening_note")), "")
-        base["hardening_note"] = hardening
-        base["powershell"] = next((e["powershell"] for e in group if e.get("powershell")), [])
+        ports = sorted({entry["port"] for entry in group})
+        ips = sorted({entry["ip"] for entry in group})
+        base = group[0].copy()
+        base["ports_list"] = ports
+        base["ips_list"] = ips
+        base["count"] = len(group)
+        base["hardening_note"] = next((entry["hardening_note"] for entry in group if entry.get("hardening_note")), "")
+        base["powershell"] = next((entry["powershell"] for entry in group if entry.get("powershell")), [])
         merged.append(base)
 
-    return sorted(merged, key=lambda x: _normalize(x["proc"]))
+    return sorted(merged, key=lambda item: normalize(item["proc"]))
 
-
-# ==============================================================================
-# POINT D'ENTRÉE PUBLIC
-# ==============================================================================
 
 def analyze(raw_results: list[dict]) -> dict:
-    """
-    Pipeline complet d'analyse.
-
-    Retourne :
-    {
-        "meta":         { date, total_raw, total_unique },
-        "summary":      { verdict, verdict_detail, nb_alertes, nb_surveiller, nb_legitimes, ... },
-        "alertes":      [ entrées classifiées ],
-        "surveiller":   [ entrées classifiées ],
-        "legitimes":    [ entrées groupées par processus ],
-        "hardenings":   [ { proc, label, justification, powershell, bash } ],
-    }
-    """
     deduped = _deduplicate(raw_results)
 
-    alertes    = []
+    alertes = []
     surveiller = []
-    legitimes  = []
+    legitimes = []
 
     for entry in deduped:
         classified = _classify_entry(entry)
-        cat = classified["category"]
-        if cat == "ALERTE":
+        category = classified["category"]
+        if category == "ALERTE":
             alertes.append(classified)
-        elif cat == "À_SURVEILLER":
+        elif category == "À_SURVEILLER":
             surveiller.append(classified)
         else:
             legitimes.append(classified)
 
-    # Trier par niveau de risque décroissant
     risk_order = {"CRITIQUE": 0, "ÉLEVÉ": 1, "MODÉRÉ": 2, "FAIBLE": 3, "TRÈS FAIBLE": 4}
-    alertes    = sorted(alertes,    key=lambda x: (risk_order.get(x["risk_level"], 9), x["port"]))
-    surveiller = sorted(surveiller, key=lambda x: (risk_order.get(x["risk_level"], 9), x["port"]))
-
-    # Regrouper les légitimes
+    alertes = sorted(alertes, key=lambda item: (risk_order.get(item["risk_level"], 9), item["port"]))
+    surveiller = sorted(surveiller, key=lambda item: (risk_order.get(item["risk_level"], 9), item["port"]))
     legitimes_grouped = _group_legitimes(legitimes)
 
-    # Construire la liste de recommandations de hardening
     hardenings = []
-    all_entries = alertes + surveiller + [e for g in [legitimes] for e in g]
     seen_ps = set()
-    for e in all_entries:
-        ps = e.get("powershell", [])
-        note = e.get("hardening_note", "")
-        if (ps or note) and e["proc"] not in seen_ps:
-            seen_ps.add(e["proc"])
-            hardenings.append({
-                "proc":          e["proc"],
-                "label":         e.get("label", e["proc"]),
-                "risk_level":    e.get("risk_level", ""),
-                "risk_icon":     e.get("risk_icon", ""),
-                "justification": note or e.get("justification", ""),
-                "powershell":    ps,
-                "bash":          e.get("bash", []),
-            })
+    all_entries = alertes + surveiller + legitimes
+    for entry in all_entries:
+        if (entry.get("powershell") or entry.get("hardening_note")) and entry["proc"] not in seen_ps:
+            seen_ps.add(entry["proc"])
+            hardenings.append(
+                {
+                    "proc": entry["proc"],
+                    "label": entry.get("label", entry["proc"]),
+                    "risk_level": entry.get("risk_level", ""),
+                    "risk_icon": entry.get("risk_icon", ""),
+                    "justification": entry.get("hardening_note") or entry.get("justification", ""),
+                    "powershell": entry.get("powershell", []),
+                    "bash": entry.get("bash", []),
+                }
+            )
 
-    # Verdict global
     nb_a = len(alertes)
     nb_s = len(surveiller)
     nb_l = len(legitimes)
 
     if nb_a > 0:
-        verdict        = "Audit nécessitant attention"
+        verdict = "Audit needs attention"
         verdict_detail = (
-            f"{nb_a} anomalie(s) critique(s) détectée(s) nécessitant investigation. "
-            f"{nb_s} service(s) à surveiller. {nb_l} entrées légitimes écartées."
+            f"{nb_a} critical finding(s) require review. "
+            f"{nb_s} service(s) should be monitored. {nb_l} legitimate entries were filtered."
         )
     elif nb_s > 0:
-        verdict        = "Système sain"
+        verdict = "System looks healthy"
         verdict_detail = (
-            f"Aucune menace critique. {nb_s} service(s) légitimes mais optimisables. "
-            f"{nb_l} faux positifs écartés."
+            f"No critical threat found. {nb_s} service(s) remain worth monitoring. "
+            f"{nb_l} entries were classified as legitimate."
         )
     else:
-        verdict        = "Système sain"
-        verdict_detail = f"Aucune anomalie. {nb_l} entrées légitimes confirmées."
+        verdict = "System looks healthy"
+        verdict_detail = f"No anomaly detected. {nb_l} legitimate entries confirmed."
 
     meta = {
-        "date":        datetime.now().strftime("%d/%m/%Y %H:%M"),
-        "total_raw":   len(raw_results),
-        "total_unique":len(deduped),
+        "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "total_raw": len(raw_results),
+        "total_unique": len(deduped),
     }
 
     summary = {
-        "verdict":        verdict,
+        "verdict": verdict,
         "verdict_detail": verdict_detail,
-        "total":          len(deduped),
-        "false_positives":nb_l,
-        "nb_alertes":     nb_a,
-        "nb_surveiller":  nb_s,
-        "nb_legitimes":   nb_l,
+        "total": len(deduped),
+        "false_positives": nb_l,
+        "nb_alertes": nb_a,
+        "nb_surveiller": nb_s,
+        "nb_legitimes": nb_l,
     }
 
     return {
-        "meta":       meta,
-        "summary":    summary,
-        "alertes":    alertes,
+        "meta": meta,
+        "summary": summary,
+        "alertes": alertes,
         "surveiller": surveiller,
-        "legitimes":  legitimes_grouped,
+        "legitimes": legitimes_grouped,
         "hardenings": hardenings,
     }

@@ -39,6 +39,18 @@ python main.py
 
 - Runtime exports are written to `tafust_data/`, which is ignored by Git.
 - The Go engine is optional and is not required to launch the Python application.
+- Add a `.env` file with `VIRUSTOTAL_API_KEY=...` to enable optional cloud hash reputation lookups.
+
+## Reputation Pipeline
+
+Tafust now combines several signals before flagging a process:
+
+- Local executable path collection
+- SHA-256 hashing of the executable
+- Windows Authenticode signature verification when available
+- Optional VirusTotal hash lookup when `VIRUSTOTAL_API_KEY` is configured
+
+Without an API key, the application still works and falls back to local trust signals only.
 
 ## License
 

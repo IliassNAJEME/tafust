@@ -29,6 +29,7 @@ C_LEGITIME   = "#1e7e34"
 C_HARDENING  = "#6f42c1"
 
 LOGO_PATH = "img/logo.png"
+RISK_COLORS_EXTRA = {"ÉLEVÉ": "#c0392b", "MODÉRÉ": "#c87f0a", "TRÈS FAIBLE": "#1e7e34"}
 
 RISK_COLORS = {
     "CRITIQUE":    "#8b0000",
@@ -41,6 +42,7 @@ RISK_COLORS = {
 # ── Helpers visuels ───────────────────────────────────────────────────────────
 
 def _sep(parent, color="#2a2a2a", pady=(8, 8)):
+    RISK_COLORS.update(RISK_COLORS_EXTRA)
     f = ctk.CTkFrame(parent, fg_color=color, height=1, corner_radius=0)
     f.pack(fill="x", padx=15, pady=pady)
 
@@ -221,6 +223,24 @@ def _detail_card(parent, e: dict, border_color: str, grouped=False):
         ctk.CTkLabel(left, text=justif,
                      font=ctk.CTkFont(size=10), text_color="#bbbbbb",
                      wraplength=560, justify="left", anchor="w").pack(anchor="w", pady=(3, 0))
+
+    evidence = []
+    if e.get("publisher"):
+        evidence.append(f"Publisher: {e.get('publisher')}")
+    if e.get("company_name"):
+        evidence.append(f"Company: {e.get('company_name')}")
+    if e.get("signature_status"):
+        evidence.append(f"Signature: {e.get('signature_status')}")
+    if e.get("reputation_source") == "virustotal":
+        evidence.append(e.get("reputation_summary", ""))
+    path = e.get("path", "")
+    if path:
+        evidence.append(f"Path: {path}")
+
+    if evidence:
+        ctk.CTkLabel(left, text="\n".join(evidence),
+                     font=ctk.CTkFont(size=9), text_color="#8aa0b6",
+                     wraplength=560, justify="left", anchor="w").pack(anchor="w", pady=(4, 0))
 
     # Droite : badge risque
     right = ctk.CTkFrame(inner, fg_color="transparent")

@@ -2,7 +2,15 @@ import customtkinter as ctk
 from src.interface import TafustUI
 from src.scanner_manager import ScannerManager
 
+try:
+    from dotenv import load_dotenv
+except Exception:
+    load_dotenv = None
+
 def main():
+    if load_dotenv is not None:
+        load_dotenv()
+
     # 1. Initialisation de la logique (Backend)
     manager = ScannerManager()
 
