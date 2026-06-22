@@ -1,38 +1,45 @@
-# 🧿 Tafust - Cross-Platform Security Monitor
+# Tafust
 
-**Tafust** is a professional, beginner-friendly cybersecurity tool designed for intelligent system port analysis. It is fully **cross-platform**, supporting both **Linux** and **Windows** environments.
+Tafust is a desktop security auditing tool for inspecting listening ports, mapping them to local processes, and producing a beginner-friendly risk report. The project targets defensive learning and local system visibility on Windows and Linux.
 
-## 🚀 Key Features
+## Features
 
-- **Cross-Platform Compatibility**: Automatically detects your OS and uses the appropriate system commands (`ss` for Linux, `netstat` for Windows).
-- **Intelligent Risk Engine**: Calculates a numerical Risk Score (0-100) based on interface exposure, process reputation, and port type.
-- **Process Mapping (via psutil)**: Automatically maps PIDs to human-readable process names (e.g., `sshd`, `brave`, `explorer.exe`).
-- **Graphical Dashboard**: A clean Tkinter interface with a real-time risk summary and detailed findings.
-- **Educational Reasoning**: Explains the rationale behind every risk classification to help users learn defensive cybersecurity.
+- Cross-platform port discovery with `netstat` on Windows and `ss` on Linux
+- Process mapping with `psutil`
+- Risk classification with contextual explanations
+- Desktop interface built with `customtkinter`
+- JSON export of the latest scan results
 
-## 💻 Supported Operating Systems
+## Project Structure
 
-- **Linux**: Uses `ss -tulnp` for detailed socket analysis.
-- **Windows**: Uses `netstat -ano` combined with `psutil` for process identification.
+- `main.py`: application entry point
+- `src/`: UI and analysis logic
+- `config/whitelist.json`: allowed service definitions
+- `engine/scanner.go`: optional Go experiment for banner grabbing
 
-## 🛠️ How to Use
+## Requirements
 
-1. **Install Dependencies**:
-   ```bash
-   pip install psutil Pillow
-   ```
-2. **Run the App**:
-   ```bash
-   python3 tafust.py
-   ```
+- Python 3.10+
+- Windows or Linux
+- Administrator/root privileges recommended for complete process visibility
 
-> [!IMPORTANT]
-> **Admin Privileges**: For full process visibility (especially on Windows), it is highly recommended to run the tool with administrative or root privileges.
+## Installation
 
-## ⚖️ Risk Statuses
-- ✅ **SAFE (0-30)**: Trusted local or standard encrypted services.
-- ⚠️ **WARNING (31-70)**: Unknown processes or services on unusual ports.
-- 🚨 **SUSPICIOUS (71-100)**: Unrecognized processes exposed on external network interfaces.
+```bash
+pip install -r requirements.txt
+```
 
----
-*Created for cross-platform educational cybersecurity learning and defensive monitoring.*
+## Run
+
+```bash
+python main.py
+```
+
+## Notes
+
+- Runtime exports are written to `tafust_data/`, which is ignored by Git.
+- The Go engine is optional and is not required to launch the Python application.
+
+## License
+
+This project is released under the MIT License. See `LICENSE`.

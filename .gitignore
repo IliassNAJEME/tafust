@@ -8,6 +8,7 @@ __pycache__/
 # Dossiers de données et logs (Corrigé)
 tafust_data/
 logs/
+*.log
 
 # Fichiers de configuration IDE (optionnel mais recommandé)
 .vscode/
