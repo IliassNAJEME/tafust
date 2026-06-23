@@ -6,6 +6,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.scanner_manager import ScannerManager
 
 
+def _resolve_allowed_origins() -> list[str]:
+    configured = os.getenv("TAFUST_ALLOWED_ORIGINS")
+    if configured:
+        return [origin.strip() for origin in configured.split(",") if origin.strip()]
+
+    return ["*"]
+
+
+def _resolve_allowed_origin_regex() -> str | None:
+    configured = os.getenv("TAFUST_ALLOWED_ORIGIN_REGEX")
+    if configured:
+        return configured
+
+    return ".*"
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Tafust API",
@@ -13,13 +29,13 @@ def create_app() -> FastAPI:
         description="HTTP API for the Tafust network audit engine.",
     )
 
-    allowed_origins = os.getenv("TAFUST_ALLOWED_ORIGINS", "http://localhost:5173")
-    origins = [origin.strip() for origin in allowed_origins.split(",") if origin.strip()]
+    origins = _resolve_allowed_origins()
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins or ["*"],
-        allow_credentials=True,
+        allow_origin_regex=_resolve_allowed_origin_regex(),
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )

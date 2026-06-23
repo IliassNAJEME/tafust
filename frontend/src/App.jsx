@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const LOGO_SRC = "/logo.png";
 
 const riskTone = {
   CRITIQUE: "border-red-500/40 bg-red-500/10 text-red-100",
@@ -133,7 +134,14 @@ export default function App() {
         <header className="overflow-hidden rounded-[2rem] border border-white/10 bg-panel/80 p-8 shadow-glow backdrop-blur">
           <div className="grid gap-8 lg:grid-cols-[1.35fr_0.65fr]">
             <div>
-              <p className="text-sm uppercase tracking-[0.4em] text-signal">Tafust Command Center</p>
+              <div className="flex items-center gap-4">
+                <img
+                  src={LOGO_SRC}
+                  alt="Tafust logo"
+                  className="h-16 w-16 rounded-2xl border border-white/10 bg-white/5 p-2 shadow-glow"
+                />
+                <p className="text-sm uppercase tracking-[0.4em] text-signal">Tafust Command Center</p>
+              </div>
               <h1 className="mt-4 max-w-3xl text-4xl font-semibold leading-tight md:text-5xl">
                 React + Tailwind architecture for a cleaner security audit workflow.
               </h1>
