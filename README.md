@@ -29,6 +29,49 @@ Tafust is a desktop security auditing tool for inspecting listening ports, mappi
 pip install -r requirements.txt
 ```
 
+## Web Architecture
+
+Tafust now includes a web interface architecture based on:
+
+- `FastAPI` for exposing the existing Python scan engine over HTTP
+- `React + Tailwind CSS` for a modern dashboard UI
+
+### Backend API
+
+Run the API server from the project root:
+
+```bash
+uvicorn src.api:app --reload
+```
+
+Available endpoints:
+
+- `GET /api/health`
+- `GET /api/report`
+- `POST /api/scan`
+
+You can configure browser access with:
+
+```bash
+TAFUST_ALLOWED_ORIGINS=http://localhost:5173
+```
+
+### Frontend
+
+Install and run the React app:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Optional environment variable:
+
+```bash
+VITE_API_BASE_URL=http://localhost:8000
+```
+
 ## Run
 
 ```bash

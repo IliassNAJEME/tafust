@@ -63,30 +63,35 @@ class ScannerManager:
             daemon=True,
         ).start()
 
+    def run_scan(self) -> dict:
+        parsed_data = self._collect_scan_data()
+        report = security_analyst.analyze(parsed_data)
+        self.last_results = parsed_data
+        self.last_report = report
+        return report
+
     def _scan_thread(self, callback_success, callback_error) -> None:
         try:
-            if self.os_type == "Windows":
-                parsed_data = self.parse_windows_output(self.get_windows_ports())
-            else:
-                parsed_data = self.parse_linux_output(self.get_linux_ports())
-
-            self.run_go_scan()
-
-            if self.exclude_local:
-                parsed_data = [
-                    entry
-                    for entry in parsed_data
-                    if not security_analyst.is_local_address(entry.get("ip", ""))
-                ]
-
-            parsed_data = [self.reputation.enrich_entry(entry) for entry in parsed_data]
-
-            report = security_analyst.analyze(parsed_data)
-            self.last_results = parsed_data
-            self.last_report = report
-            callback_success(report)
+            callback_success(self.run_scan())
         except Exception as exc:
             callback_error(str(exc))
+
+    def _collect_scan_data(self) -> list[dict]:
+        if self.os_type == "Windows":
+            parsed_data = self.parse_windows_output(self.get_windows_ports())
+        else:
+            parsed_data = self.parse_linux_output(self.get_linux_ports())
+
+        self.run_go_scan()
+
+        if self.exclude_local:
+            parsed_data = [
+                entry
+                for entry in parsed_data
+                if not security_analyst.is_local_address(entry.get("ip", ""))
+            ]
+
+        return [self.reputation.enrich_entry(entry) for entry in parsed_data]
 
     def analyze_risk(self, data: list[dict]) -> dict:
         return security_analyst.analyze(data)
