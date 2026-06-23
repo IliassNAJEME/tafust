@@ -17,6 +17,14 @@ def _resolve_allowed_origins() -> list[str]:
     ]
 
 
+def _resolve_allowed_origin_regex() -> str | None:
+    configured = os.getenv("TAFUST_ALLOWED_ORIGIN_REGEX")
+    if configured:
+        return configured
+
+    return r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Tafust API",
@@ -29,6 +37,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins or ["*"],
+        allow_origin_regex=_resolve_allowed_origin_regex(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
