@@ -1,5 +1,7 @@
 # Environnement virtuel
 venv/
+frontend/node_modules/
+frontend/dist/
 
 # Cache Python
 __pycache__/
