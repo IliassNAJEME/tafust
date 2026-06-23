@@ -11,10 +11,7 @@ def _resolve_allowed_origins() -> list[str]:
     if configured:
         return [origin.strip() for origin in configured.split(",") if origin.strip()]
 
-    return [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ]
+    return ["*"]
 
 
 def _resolve_allowed_origin_regex() -> str | None:
@@ -22,7 +19,7 @@ def _resolve_allowed_origin_regex() -> str | None:
     if configured:
         return configured
 
-    return r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    return ".*"
 
 
 def create_app() -> FastAPI:
@@ -38,7 +35,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=origins or ["*"],
         allow_origin_regex=_resolve_allowed_origin_regex(),
-        allow_credentials=True,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
