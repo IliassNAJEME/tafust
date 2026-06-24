@@ -1,5 +1,3 @@
-import { RISK_CONFIG } from "./StatusBadge";
-
 const VERDICT_STYLES = {
   "Audit needs attention": {
     border: "border-danger/30",
@@ -47,24 +45,9 @@ function RiskDistribution({ alertes = 0, surveiller = 0, legitimes = 0 }) {
     <div className="rounded-2xl border border-border glass-card p-5 shadow-card animate-fade-in">
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-subtle">Distribution</p>
       <div className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-ink/60">
-        {alertes > 0 && (
-          <div
-            className="bg-danger transition-all duration-700"
-            style={{ width: `${pctA}%` }}
-          />
-        )}
-        {surveiller > 0 && (
-          <div
-            className="bg-warning transition-all duration-700"
-            style={{ width: `${pctS}%` }}
-          />
-        )}
-        {legitimes > 0 && (
-          <div
-            className="bg-signal/60 transition-all duration-700"
-            style={{ width: `${pctL}%` }}
-          />
-        )}
+        {alertes > 0 && <div className="bg-danger transition-all duration-700" style={{ width: `${pctA}%` }} />}
+        {surveiller > 0 && <div className="bg-warning transition-all duration-700" style={{ width: `${pctS}%` }} />}
+        {legitimes > 0 && <div className="bg-signal/60 transition-all duration-700" style={{ width: `${pctL}%` }} />}
       </div>
       <div className="mt-3 flex gap-4">
         {[
@@ -75,7 +58,7 @@ function RiskDistribution({ alertes = 0, surveiller = 0, legitimes = 0 }) {
           <div key={label} className="flex items-center gap-1.5">
             <span className={`h-2 w-2 rounded-full ${color}`} />
             <span className="text-xs text-subtle">
-              {label} <span className="text-mist font-medium">{value}</span>
+              {label} <span className="font-medium text-mist">{value}</span>
             </span>
           </div>
         ))}
@@ -99,16 +82,13 @@ export default function SummaryBar({ summary, meta }) {
 
   return (
     <div className="space-y-4">
-      {/* Verdict banner */}
-      <div
-        className={`rounded-2xl border p-4 glass-card animate-fade-in ${verdictStyle.border} ${verdictStyle.bg}`}
-      >
+      <div className={`rounded-2xl border p-4 glass-card animate-fade-in ${verdictStyle.border} ${verdictStyle.bg}`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <span className="text-2xl">{verdictStyle.icon}</span>
             <div>
               <p className={`font-semibold ${verdictStyle.color}`}>{summary.verdict}</p>
-              <p className="text-xs text-subtle mt-0.5">{summary.verdict_detail}</p>
+              <p className="mt-0.5 text-xs text-subtle">{summary.verdict_detail}</p>
             </div>
           </div>
           {meta?.date && (
@@ -119,7 +99,6 @@ export default function SummaryBar({ summary, meta }) {
         </div>
       </div>
 
-      {/* Stats row */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Entrées totales"

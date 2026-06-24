@@ -5,12 +5,10 @@ export default function Header({ health }) {
 
   return (
     <header className="relative overflow-hidden rounded-2xl border border-border glass-card shadow-card">
-      {/* Subtle top gradient glow */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-signal/40 to-transparent" />
       <div className="pointer-events-none absolute left-0 top-0 h-48 w-full bg-gradient-radial-signal opacity-60" />
 
       <div className="relative flex flex-col gap-6 p-6 md:flex-row md:items-center md:justify-between md:gap-8 lg:p-8">
-        {/* Left — branding */}
         <div className="flex items-center gap-5">
           <div className="relative flex-shrink-0">
             <div className="absolute -inset-1 rounded-2xl bg-signal/10 blur-md" />
@@ -38,15 +36,9 @@ export default function Header({ health }) {
           </div>
         </div>
 
-        {/* Right — runtime info */}
         <div className="flex flex-wrap items-center gap-3 md:flex-col md:items-end md:gap-2">
-          {/* API Status */}
           <div className="flex items-center gap-2 rounded-lg border border-border bg-ink/40 px-3 py-2">
-            <span
-              className={`h-2 w-2 rounded-full ${
-                apiOnline ? "bg-signal animate-pulse" : "bg-danger"
-              }`}
-            />
+            <span className={`h-2 w-2 rounded-full ${apiOnline ? "bg-signal animate-pulse" : "bg-danger"}`} />
             <span className="text-xs font-medium text-subtle">
               API{" "}
               <span className={apiOnline ? "text-signal" : "text-danger"}>
@@ -55,7 +47,6 @@ export default function Header({ health }) {
             </span>
           </div>
 
-          {/* OS badge */}
           {health?.os && (
             <div className="flex items-center gap-2 rounded-lg border border-border bg-ink/40 px-3 py-2">
               <svg className="h-3.5 w-3.5 text-subtle" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -65,7 +56,6 @@ export default function Header({ health }) {
             </div>
           )}
 
-          {/* VirusTotal badge */}
           <div
             className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
               health?.has_virustotal_key

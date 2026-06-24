@@ -155,6 +155,13 @@ def _local_trust_summary(entry: dict) -> str:
     return "; ".join(facts)
 
 
+def _cloud_signal(entry: dict) -> tuple[int, int]:
+    return (
+        int(entry.get("vt_malicious", 0) or 0),
+        int(entry.get("vt_suspicious", 0) or 0),
+    )
+
+
 def _classify_entry(entry: dict) -> dict:
     proc = entry.get("proc", "Unknown")
     port = entry.get("port", 0)
@@ -167,7 +174,9 @@ def _classify_entry(entry: dict) -> dict:
     trusted_publisher = bool(entry.get("publisher_trusted"))
     trusted_path = bool(entry.get("path_trusted"))
     trusted_company = bool(entry.get("company_name")) and trusted_publisher
+    trusted_local_evidence = trusted_signature or trusted_publisher or trusted_path or trusted_company
     local_evidence = _local_trust_summary(entry)
+    vt_malicious, vt_suspicious = _cloud_signal(entry)
 
     catalog_label, catalog_desc = SERVICE_CATALOG.get(port, ("", ""))
     result = {
@@ -207,12 +216,23 @@ def _classify_entry(entry: dict) -> dict:
         return result
 
     if cloud_verdict == "suspicious":
-        result["category"] = "ALERTE"
-        result["risk_level"] = "ÉLEVÉ"
-        result["risk_icon"] = "🔴"
-        result["justification"] = (
-            f"Cloud reputation marked '{proc}' as suspicious. {entry.get('reputation_summary', '')}"
-        )
+        result["category"] = "À_SURVEILLER" if trusted_local_evidence else "ALERTE"
+        result["risk_level"] = "MODÉRÉ" if trusted_local_evidence else "ÉLEVÉ"
+        result["risk_icon"] = "🟡" if trusted_local_evidence else "🔴"
+        if trusted_local_evidence:
+            result["justification"] = (
+                f"Cloud reputation raised a weak warning for '{proc}', "
+                f"but local trust evidence exists. {entry.get('reputation_summary', '')}"
+            )
+            if vt_malicious > 0:
+                result["hardening_note"] = (
+                    "Weak cloud signal detected for an otherwise trusted application. "
+                    "Recheck if more engines start flagging it."
+                )
+        else:
+            result["justification"] = (
+                f"Cloud reputation marked '{proc}' as suspicious. {entry.get('reputation_summary', '')}"
+            )
         return result
 
     if _is_system_process(proc):
@@ -280,7 +300,13 @@ def _classify_entry(entry: dict) -> dict:
         return result
 
     if _is_vendor_process(proc):
-        result["justification"] = f"Known vendor application detected ({proc})."
+        result["category"] = "À_SURVEILLER" if not is_local else "SYSTÈME_LÉGITIME"
+        result["risk_level"] = "FAIBLE" if not is_local else "TRÈS FAIBLE"
+        result["risk_icon"] = "🟡" if not is_local else "🟢"
+        result["justification"] = (
+            f"Known vendor application detected ({proc}). "
+            f"{entry.get('reputation_summary', '') if (vt_malicious or vt_suspicious) else local_evidence}"
+        ).strip()
         return result
 
     if is_local:

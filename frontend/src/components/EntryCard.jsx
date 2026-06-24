@@ -63,9 +63,7 @@ export default function EntryCard({ entry, compact = false, index = 0 }) {
       className={`rounded-2xl border ${config.border} ${config.bg} shadow-card transition-all duration-200 animate-fade-in`}
       style={{ animationDelay: `${index * 0.05}s`, opacity: 0 }}
     >
-      {/* Main content */}
       <div className="p-5">
-        {/* Top row */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="truncate text-base font-semibold text-mist">
@@ -78,7 +76,6 @@ export default function EntryCard({ entry, compact = false, index = 0 }) {
           <StatusBadge level={entry.risk_level} />
         </div>
 
-        {/* Info grid */}
         <div className="mt-4 grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
           <div>
             <p className="text-subtle">Port(s)</p>
@@ -91,7 +88,7 @@ export default function EntryCard({ entry, compact = false, index = 0 }) {
           {entry.company_name && (
             <div>
               <p className="text-subtle">Éditeur</p>
-              <p className="mt-1 font-medium text-mist truncate">{entry.company_name}</p>
+              <p className="mt-1 truncate font-medium text-mist">{entry.company_name}</p>
             </div>
           )}
           {entry.signature_status && (
@@ -112,10 +109,8 @@ export default function EntryCard({ entry, compact = false, index = 0 }) {
           )}
         </div>
 
-        {/* Justification */}
         <p className="mt-4 text-sm leading-6 text-mist/75">{entry.justification}</p>
 
-        {/* Exposure */}
         {entry.exposure && !compact && (
           <div className="mt-3 flex items-center gap-2 text-xs text-subtle">
             <svg className="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -125,7 +120,6 @@ export default function EntryCard({ entry, compact = false, index = 0 }) {
           </div>
         )}
 
-        {/* Expand / collapse toggle */}
         {(hasDetails || hasPS) && (
           <button
             onClick={() => setExpanded((v) => !v)}
@@ -145,9 +139,8 @@ export default function EntryCard({ entry, compact = false, index = 0 }) {
         )}
       </div>
 
-      {/* Expandable section */}
       {expanded && (
-        <div className="border-t border-border/50 px-5 pb-5 pt-4 space-y-4 animate-fade-in">
+        <div className="space-y-4 border-t border-border/50 px-5 pb-5 pt-4 animate-fade-in">
           {hasDetails && (
             <div className="grid gap-3 sm:grid-cols-2">
               <DetailRow label="Chemin" value={entry.path} />

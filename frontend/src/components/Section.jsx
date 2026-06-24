@@ -16,7 +16,6 @@ export default function Section({ title, subtitle, items, compact = false }) {
 
   if (!items || items.length === 0) return null;
 
-  // Collect which risk levels are present
   const presentLevels = RISK_LEVELS.filter((lvl) =>
     items.some((item) => item.risk_level === lvl)
   );
@@ -34,7 +33,6 @@ export default function Section({ title, subtitle, items, compact = false }) {
 
   return (
     <section className="space-y-4">
-      {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-mist">{title}</h2>
@@ -48,7 +46,6 @@ export default function Section({ title, subtitle, items, compact = false }) {
         </span>
       </div>
 
-      {/* Filters */}
       {presentLevels.length > 1 && (
         <div className="flex flex-wrap gap-2">
           {presentLevels.map((lvl) => {
@@ -82,7 +79,6 @@ export default function Section({ title, subtitle, items, compact = false }) {
         </div>
       )}
 
-      {/* Cards grid */}
       <div className="grid gap-4 xl:grid-cols-2">
         {filtered.map((entry, index) => (
           <EntryCard

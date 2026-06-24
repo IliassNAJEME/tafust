@@ -191,10 +191,10 @@ class ReputationService:
         harmless = int(stats.get("harmless", 0))
         undetected = int(stats.get("undetected", 0))
 
-        if malicious > 0:
+        if malicious >= 5:
             verdict = "malicious"
             confidence = "high"
-        elif suspicious > 0:
+        elif malicious > 0 or suspicious > 0:
             verdict = "suspicious"
             confidence = "medium"
         elif harmless > 0 and malicious == 0 and suspicious == 0:
@@ -212,6 +212,10 @@ class ReputationService:
                 f"VirusTotal: malicious={malicious}, suspicious={suspicious}, "
                 f"harmless={harmless}, undetected={undetected}"
             ),
+            "vt_malicious": malicious,
+            "vt_suspicious": suspicious,
+            "vt_harmless": harmless,
+            "vt_undetected": undetected,
             "vt_stats": stats,
         }
 

@@ -7,12 +7,20 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from src.scanner_manager import ScannerManager
 
 try:
-    from dotenv import load_dotenv
+    from dotenv import find_dotenv, load_dotenv
 except Exception:
+    find_dotenv = None
     load_dotenv = None
 
 if load_dotenv is not None:
-    load_dotenv()
+    dotenv_path = ""
+    if find_dotenv is not None:
+        dotenv_path = find_dotenv(usecwd=True)
+    if not dotenv_path:
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        candidate = os.path.join(project_root, ".env")
+        dotenv_path = candidate if os.path.exists(candidate) else ""
+    load_dotenv(dotenv_path or None, override=True)
 
 
 def _parse_csv_env(name: str) -> list[str]:
