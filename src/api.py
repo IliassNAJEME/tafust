@@ -1,25 +1,57 @@
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from src.scanner_manager import ScannerManager
 
+try:
+    from dotenv import load_dotenv
+except Exception:
+    load_dotenv = None
+
+if load_dotenv is not None:
+    load_dotenv()
+
+
+def _parse_csv_env(name: str) -> list[str]:
+    configured = os.getenv(name, "")
+    return [value.strip() for value in configured.split(",") if value.strip()]
+
 
 def _resolve_allowed_origins() -> list[str]:
-    configured = os.getenv("TAFUST_ALLOWED_ORIGINS")
-    if configured:
-        return [origin.strip() for origin in configured.split(",") if origin.strip()]
-
-    return ["*"]
-
-
-def _resolve_allowed_origin_regex() -> str | None:
-    configured = os.getenv("TAFUST_ALLOWED_ORIGIN_REGEX")
+    configured = _parse_csv_env("TAFUST_ALLOWED_ORIGINS")
     if configured:
         return configured
 
-    return ".*"
+    return [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://localhost:5173",
+        "https://127.0.0.1:5173",
+    ]
+
+
+def _resolve_allowed_origin_regex() -> str | None:
+    configured = os.getenv("TAFUST_ALLOWED_ORIGIN_REGEX", "").strip()
+    return configured or None
+
+
+def _resolve_allowed_hosts() -> list[str]:
+    configured = _parse_csv_env("TAFUST_ALLOWED_HOSTS")
+    if configured:
+        return configured
+
+    return [
+        "localhost",
+        "127.0.0.1",
+        "::1",
+    ]
+
+
+def _https_is_enforced() -> bool:
+    return os.getenv("TAFUST_FORCE_HTTPS", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def create_app() -> FastAPI:
@@ -30,17 +62,33 @@ def create_app() -> FastAPI:
     )
 
     origins = _resolve_allowed_origins()
+    origin_regex = _resolve_allowed_origin_regex()
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins or ["*"],
-        allow_origin_regex=_resolve_allowed_origin_regex(),
+        allow_origins=origins,
+        allow_origin_regex=origin_regex,
         allow_credentials=False,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type"],
+    )
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=_resolve_allowed_hosts(),
     )
 
     manager = ScannerManager()
+
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "same-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if _https_is_enforced():
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
 
     @app.get("/api/health")
     def health() -> dict:
@@ -49,6 +97,7 @@ def create_app() -> FastAPI:
             "os": manager.os_type,
             "exclude_local": manager.exclude_local,
             "has_virustotal_key": bool(os.getenv("VIRUSTOTAL_API_KEY")),
+            "https_required": _https_is_enforced(),
         }
 
     @app.get("/api/report")

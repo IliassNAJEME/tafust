@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const LOGO_SRC = "/logo.png";
 
 const riskTone = {
@@ -153,9 +153,10 @@ export default function App() {
             <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-6">
               <p className="text-xs uppercase tracking-[0.25em] text-mist/70">Runtime</p>
               <div className="mt-4 space-y-4 text-sm text-white/80">
-                <p>API: <span className="text-white">{API_BASE}</span></p>
+                <p>API: <span className="text-white">{API_BASE || "Same origin (/api via proxy or reverse proxy)"}</span></p>
                 <p>Backend OS: <span className="text-white">{health?.os || "Unavailable"}</span></p>
                 <p>VirusTotal key: <span className="text-white">{health?.has_virustotal_key ? "Configured" : "Not configured"}</span></p>
+                <p>HTTPS policy: <span className="text-white">{health?.https_required ? "Enforced" : "Optional"}</span></p>
               </div>
               <label className="mt-6 flex items-center gap-3 rounded-2xl border border-white/10 bg-ink/40 px-4 py-3 text-sm">
                 <input

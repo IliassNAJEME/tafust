@@ -36,6 +36,10 @@ Tafust now includes a web interface architecture based on:
 - `FastAPI` for exposing the existing Python scan engine over HTTP
 - `React + Tailwind CSS` for a modern dashboard UI
 
+For development, the frontend uses a Vite proxy so the browser can call `/api`
+without exposing a second origin by default. For deployment, plan to serve the
+frontend and API behind the same HTTPS domain or behind a reverse proxy.
+
 ### Backend API
 
 Run the API server from the project root:
@@ -50,11 +54,20 @@ Available endpoints:
 - `GET /api/report`
 - `POST /api/scan`
 
-You can configure browser access with:
+Copy `.env.example` to `.env` and configure explicit browser origins and hosts:
 
 ```bash
-TAFUST_ALLOWED_ORIGINS=http://localhost:5173
+TAFUST_ALLOWED_ORIGINS=http://localhost:5173,https://localhost:5173
+TAFUST_ALLOWED_HOSTS=localhost,127.0.0.1
+TAFUST_FORCE_HTTPS=false
 ```
+
+Security notes:
+
+- By default, the API no longer allows every origin.
+- The API now validates the request host header.
+- Security headers are added automatically.
+- Enable `TAFUST_FORCE_HTTPS=true` only when the app is actually served over HTTPS.
 
 ### Frontend
 
@@ -66,10 +79,54 @@ npm install
 npm run dev
 ```
 
-Optional environment variable:
+Copy `frontend/.env.example` to `frontend/.env` if you need to override defaults.
+
+Default behavior:
+
+- The dev server listens on `127.0.0.1:5173`
+- Browser requests to `/api` are proxied to `http://127.0.0.1:8000`
+- `VITE_API_BASE_URL` can stay empty when frontend and API share the same origin
+
+Optional environment variables:
 
 ```bash
-VITE_API_BASE_URL=http://localhost:8000
+VITE_API_BASE_URL=
+VITE_BACKEND_URL=http://127.0.0.1:8000
+VITE_DEV_HOST=127.0.0.1
+VITE_DEV_HTTPS=false
+VITE_DEV_SSL_CERT=
+VITE_DEV_SSL_KEY=
+```
+
+To use HTTPS in local development, provide a trusted local certificate and set:
+
+```bash
+VITE_DEV_HTTPS=true
+VITE_DEV_SSL_CERT=frontend/certs/localhost.pem
+VITE_DEV_SSL_KEY=frontend/certs/localhost-key.pem
+```
+
+If you expose the dev server on your LAN, also add that origin explicitly in
+`TAFUST_ALLOWED_ORIGINS`.
+
+### Deployment Guidance
+
+Recommended production shape:
+
+1. Build the frontend with `npm run build`.
+2. Serve `frontend/dist` behind `nginx`, `Caddy`, or another HTTPS reverse proxy.
+3. Reverse-proxy `/api` to `uvicorn` so the browser stays on a single origin.
+4. Set `TAFUST_ALLOWED_ORIGINS` to your real HTTPS domain only.
+5. Set `TAFUST_ALLOWED_HOSTS` to your real domain only.
+6. Set `TAFUST_FORCE_HTTPS=true`.
+
+Example production values:
+
+```bash
+TAFUST_ALLOWED_ORIGINS=https://tafust.example.com
+TAFUST_ALLOWED_HOSTS=tafust.example.com
+TAFUST_FORCE_HTTPS=true
+VITE_API_BASE_URL=
 ```
 
 ## Run

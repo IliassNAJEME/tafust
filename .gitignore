@@ -19,6 +19,8 @@ logs/
 
 # Fichiers de variables d'environnement (si vous en utilisez plus tard)
 .env
+frontend/.env
+frontend/certs/
 
 # Ignore les binaires Go
 engine/*.exe
