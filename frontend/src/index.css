@@ -2,20 +2,139 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color: #e8f0ff;
-  background:
-    radial-gradient(circle at top, rgba(61, 220, 151, 0.18), transparent 30%),
-    linear-gradient(160deg, #07101d 0%, #0d1726 45%, #14263d 100%);
-  font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: #070d1a;
+    color: #d7e3f4;
+    font-family: "Inter", system-ui, sans-serif;
+    min-height: 100vh;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #0b1425;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #1a2d4a;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #00ffa3;
+  }
+
+  /* Selection */
+  ::selection {
+    background: rgba(0, 255, 163, 0.2);
+    color: #d7e3f4;
+  }
 }
 
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
+@layer components {
+  /* Glass card */
+  .glass-card {
+    background: rgba(11, 20, 37, 0.85);
+    border: 1px solid rgba(26, 45, 74, 0.8);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  /* Glow button */
+  .btn-signal {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-signal px-5 py-2.5 font-semibold text-ink transition-all duration-200;
+    @apply hover:brightness-110 hover:shadow-glow active:scale-95;
+    @apply disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:brightness-100;
+  }
+
+  /* Risk badge base */
+  .risk-badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold tracking-wide;
+  }
+
+  /* Code block */
+  .code-block {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    @apply rounded-lg bg-ink/80 px-3 py-2 text-xs text-signal;
+  }
+
+  /* Tab button */
+  .tab-btn {
+    @apply relative px-4 py-2.5 text-sm font-medium text-subtle transition-colors duration-200;
+    @apply hover:text-mist;
+  }
+
+  .tab-btn.active {
+    @apply text-signal;
+  }
+
+  .tab-btn.active::after {
+    content: "";
+    @apply absolute bottom-0 left-0 h-0.5 w-full rounded-full bg-signal;
+  }
+
+  /* Filter pill */
+  .filter-pill {
+    @apply cursor-pointer rounded-full border border-border px-3 py-1 text-xs font-medium text-subtle transition-all duration-200;
+    @apply hover:border-signal/40 hover:text-mist;
+  }
+
+  .filter-pill.active {
+    @apply border-signal/40 bg-signal/10 text-signal;
+  }
 }
 
-#root {
-  min-height: 100vh;
+@layer utilities {
+  /* Animated gradient text */
+  .text-gradient-signal {
+    background: linear-gradient(135deg, #00ffa3, #2ed573);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Grid background */
+  .bg-grid {
+    background-image: linear-gradient(
+        rgba(0, 255, 163, 0.03) 1px,
+        transparent 1px
+      ),
+      linear-gradient(90deg, rgba(0, 255, 163, 0.03) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  /* Neon border */
+  .border-neon-signal {
+    border-color: rgba(0, 255, 163, 0.3);
+    box-shadow: 0 0 0 1px rgba(0, 255, 163, 0.1);
+  }
+
+  .border-neon-danger {
+    border-color: rgba(255, 71, 87, 0.3);
+    box-shadow: 0 0 0 1px rgba(255, 71, 87, 0.1);
+  }
+
+  /* Truncate paths */
+  .truncate-path {
+    direction: rtl;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
