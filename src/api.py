@@ -12,15 +12,37 @@ except Exception:
     find_dotenv = None
     load_dotenv = None
 
-if load_dotenv is not None:
+
+def _resolve_dotenv_path() -> str:
     dotenv_path = ""
     if find_dotenv is not None:
         dotenv_path = find_dotenv(usecwd=True)
-    if not dotenv_path:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        candidate = os.path.join(project_root, ".env")
-        dotenv_path = candidate if os.path.exists(candidate) else ""
+    if dotenv_path:
+        return dotenv_path
+
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    candidate = os.path.join(project_root, ".env")
+    return candidate if os.path.exists(candidate) else ""
+
+
+def _load_env_file_fallback(path: str) -> None:
+    if not path or not os.path.exists(path):
+        return
+
+    with open(path, "r", encoding="utf-8") as env_file:
+        for raw_line in env_file:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ[key.strip()] = value.strip().strip('"').strip("'")
+
+
+dotenv_path = _resolve_dotenv_path()
+if load_dotenv is not None:
     load_dotenv(dotenv_path or None, override=True)
+else:
+    _load_env_file_fallback(dotenv_path)
 
 
 def _parse_csv_env(name: str) -> list[str]:

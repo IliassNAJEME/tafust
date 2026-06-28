@@ -2,11 +2,21 @@ import logo from "../../../img/logo.png";
 
 export default function Header({ health }) {
   const apiOnline = health !== null && health !== undefined;
+  const virustotalConfigured = Boolean(health?.has_virustotal_key);
 
   return (
     <header className="relative overflow-hidden rounded-2xl border border-border glass-card shadow-card">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-signal/40 to-transparent" />
       <div className="pointer-events-none absolute left-0 top-0 h-48 w-full bg-gradient-radial-signal opacity-60" />
+
+      {!virustotalConfigured && (
+        <div className="relative z-10 flex items-center justify-center gap-2 border-b border-warning/20 bg-warning/10 px-4 py-2 text-xs font-medium text-warning">
+          <svg className="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
+          <span>VirusTotal non configure</span>
+        </div>
+      )}
 
       <div className="relative flex flex-col gap-6 p-6 md:flex-row md:items-center md:justify-between md:gap-8 lg:p-8">
         <div className="flex items-center gap-5">
@@ -31,7 +41,7 @@ export default function Header({ health }) {
               Network Security Audit
             </h1>
             <p className="mt-1 text-sm text-subtle">
-              Ports · Processus · Classification des risques
+              Ports - Processus - Classification des risques
             </p>
           </div>
         </div>
@@ -58,18 +68,18 @@ export default function Header({ health }) {
 
           <div
             className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
-              health?.has_virustotal_key
+              virustotalConfigured
                 ? "border-signal/20 bg-signal/5"
                 : "border-border bg-ink/40"
             }`}
           >
-            <svg className={`h-3.5 w-3.5 ${health?.has_virustotal_key ? "text-signal" : "text-subtle"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg className={`h-3.5 w-3.5 ${virustotalConfigured ? "text-signal" : "text-subtle"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
             </svg>
             <span className="text-xs text-subtle">
               VirusTotal{" "}
-              <span className={health?.has_virustotal_key ? "text-signal" : "text-warning"}>
-                {health?.has_virustotal_key ? "actif" : "non configuré"}
+              <span className={virustotalConfigured ? "text-signal" : "text-warning"}>
+                {virustotalConfigured ? "actif" : "non configure"}
               </span>
             </span>
           </div>
