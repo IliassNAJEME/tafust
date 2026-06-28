@@ -8,16 +8,18 @@ import Loader from "./components/Loader";
 import { ToastContainer } from "./components/Toast";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+const DEMO_MODE = (import.meta.env.VITE_DEMO_MODE || "").toLowerCase() === "true";
+const DEMO_REPORT_URL = `${import.meta.env.BASE_URL}demo-report.json`;
 
-const SEVERITY_ORDER = ["CRITIQUE", "ÉLEVÉ", "MODÉRÉ", "FAIBLE", "TRÈS FAIBLE"];
+const SEVERITY_ORDER = ["CRITIQUE", "Ã‰LEVÃ‰", "MODÃ‰RÃ‰", "FAIBLE", "TRÃˆS FAIBLE"];
 
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
   { id: "alertes", label: "Alertes" },
   { id: "surveiller", label: "Surveillance" },
-  { id: "legitimes", label: "Légitimes" },
+  { id: "legitimes", label: "LÃ©gitimes" },
   { id: "hardenings", label: "Durcissement" },
-  { id: "raw", label: "Données brutes" },
+  { id: "raw", label: "Donnees brutes" },
 ];
 
 let toastCounter = 0;
@@ -48,6 +50,26 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (DEMO_MODE) {
+      fetch(DEMO_REPORT_URL)
+        .then((r) => r.json())
+        .then((data) => {
+          setPayload(data);
+          setHealth({
+            status: "ok",
+            os: "Demo",
+            exclude_local: false,
+            has_virustotal_key: true,
+            https_required: true,
+          });
+        })
+        .catch(() => {
+          setHealth(null);
+          setError("Impossible de charger le rapport de demo.");
+        });
+      return;
+    }
+
     fetch(`${API_BASE}/api/health`)
       .then((r) => r.json())
       .then(setHealth)
@@ -55,6 +77,26 @@ export default function App() {
   }, []);
 
   async function launchScan() {
+    if (DEMO_MODE) {
+      setLoading(true);
+      setError("");
+      try {
+        const response = await fetch(DEMO_REPORT_URL);
+        if (!response.ok) throw new Error(`Demo error ${response.status}`);
+        const data = await response.json();
+        setPayload(data);
+        setActiveTab("dashboard");
+        addToast("Mode demo recharge - rapport d'exemple affiche.", "success");
+      } catch {
+        const msg = "Impossible de recharger le rapport de demo.";
+        setError(msg);
+        addToast(msg, "error");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     setLoading(true);
     setError("");
     try {
@@ -76,13 +118,13 @@ export default function App() {
 
       const nb = data.report?.summary?.nb_alertes ?? 0;
       if (nb > 0) {
-        addToast(`Scan terminé - ${nb} alerte(s) détectée(s).`, "error");
+        addToast(`Scan termine - ${nb} alerte(s) detectee(s).`, "error");
       } else {
-        addToast("Scan terminé - aucune alerte critique.", "success");
+        addToast("Scan termine - aucune alerte critique.", "success");
       }
       setActiveTab("dashboard");
     } catch {
-      const msg = "Impossible de joindre l'API Tafust. Démarrez le serveur Python puis réessayez.";
+      const msg = "Impossible de joindre l'API Tafust. Demarrez le serveur Python puis reessayez.";
       setError(msg);
       addToast(msg, "error");
     } finally {
@@ -99,7 +141,7 @@ export default function App() {
     a.download = `tafust_report_${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    addToast("Rapport exporté en JSON.", "success");
+    addToast("Rapport exporte en JSON.", "success");
   }
 
   const report = payload?.report;
@@ -130,6 +172,7 @@ export default function App() {
           onScan={launchScan}
           loading={loading}
           error={error}
+          demoMode={DEMO_MODE}
         />
 
         {loading && <Loader />}
@@ -177,13 +220,13 @@ export default function App() {
               {activeTab === "dashboard" && (
                 <div className="space-y-8 animate-fade-in">
                   <Section
-                    title="File de priorité"
-                    subtitle="Alertes et services à examiner en premier."
+                    title="File de priorite"
+                    subtitle="Alertes et services a examiner en premier."
                     items={alertItems}
                   />
                   <Section
-                    title="Services légitimes"
-                    subtitle="Processus Windows connus, groupés par application."
+                    title="Services legitimes"
+                    subtitle="Processus connus, groupes par application."
                     items={report?.legitimes || []}
                     compact
                   />
@@ -194,7 +237,7 @@ export default function App() {
                 <div className="animate-fade-in">
                   <Section
                     title="Alertes"
-                    subtitle="Processus suspects ou exposés sur le réseau sans preuve de confiance."
+                    subtitle="Processus suspects ou exposes sur le reseau sans preuve de confiance."
                     items={report?.alertes || []}
                   />
                 </div>
@@ -203,8 +246,8 @@ export default function App() {
               {activeTab === "surveiller" && (
                 <div className="animate-fade-in">
                   <Section
-                    title="À surveiller"
-                    subtitle="Services watchlist et outils d'accès distant."
+                    title="A surveiller"
+                    subtitle="Services watchlist et outils d'acces distant."
                     items={report?.surveiller || []}
                   />
                 </div>
@@ -213,8 +256,8 @@ export default function App() {
               {activeTab === "legitimes" && (
                 <div className="animate-fade-in">
                   <Section
-                    title="Services légitimes"
-                    subtitle="Processus classifiés comme sûrs, groupés par application."
+                    title="Services legitimes"
+                    subtitle="Processus classes comme surs, groupes par application."
                     items={report?.legitimes || []}
                     compact
                   />
@@ -226,7 +269,7 @@ export default function App() {
                   <div>
                     <h2 className="text-xl font-bold text-mist">Recommandations de durcissement</h2>
                     <p className="mt-1 text-sm text-subtle">
-                      Commandes PowerShell et Bash pour réduire la surface d'attaque.
+                      Commandes PowerShell et Bash pour reduire la surface d'attaque.
                     </p>
                   </div>
                   <HardeningPanel hardenings={report?.hardenings} />
@@ -237,16 +280,16 @@ export default function App() {
                 <div className="space-y-4 animate-fade-in">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h2 className="text-xl font-bold text-mist">Données brutes</h2>
+                      <h2 className="text-xl font-bold text-mist">Donnees brutes</h2>
                       <p className="mt-1 text-sm text-subtle">
-                        Résultats JSON complets retournés par l'API.
+                        Resultats JSON complets retournes par l'application.
                       </p>
                     </div>
                     <button onClick={exportJSON} className="btn-signal text-sm">
                       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                       </svg>
-                      Télécharger JSON
+                      Telecharger JSON
                     </button>
                   </div>
                   <pre className="code-block max-h-[600px] overflow-auto rounded-2xl p-5 text-xs leading-5 text-signal/80">
@@ -268,7 +311,7 @@ export default function App() {
             <div>
               <p className="font-semibold text-mist">Aucun rapport disponible</p>
               <p className="mt-1 text-sm text-subtle">
-                Lancez un audit depuis le panneau ci-dessus pour afficher les résultats.
+                Lance un audit depuis le panneau ci-dessus pour afficher les resultats.
               </p>
             </div>
           </div>
