@@ -9,20 +9,20 @@ import threading
 import psutil
 
 from src import security_analyst
+from src.app_paths import get_data_dir, get_resource_path
 from src.reputation import ReputationService
 
 
-if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+if sys.stdout and sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
 
-DATA_DIR = "tafust_data"
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WHITELIST_FILE = os.path.join(BASE_DIR, "config", "whitelist.json")
-GO_ENGINE_PATH = os.path.join(BASE_DIR, "engine", "scanner.exe")
+DATA_DIR = get_data_dir()
+WHITELIST_FILE = get_resource_path("config", "whitelist.json")
+GO_ENGINE_PATH = get_resource_path("engine", "scanner.exe")
 
 
 class ScannerManager:
@@ -34,6 +34,15 @@ class ScannerManager:
         self.last_results = []
         self.last_report = {}
         self.reputation = ReputationService()
+        self.progress_callback = None
+
+    def _emit_progress(self, step: str, detail: str = "") -> None:
+        if not self.progress_callback:
+            return
+        try:
+            self.progress_callback(step, detail)
+        except Exception:
+            pass
 
     def load_whitelist(self) -> set[str]:
         whitelist = set()
@@ -64,10 +73,13 @@ class ScannerManager:
         ).start()
 
     def run_scan(self) -> dict:
+        self._emit_progress("collect", "Collecte des connexions reseau")
         parsed_data = self._collect_scan_data()
+        self._emit_progress("analyze", "Analyse des risques")
         report = security_analyst.analyze(parsed_data)
         self.last_results = parsed_data
         self.last_report = report
+        self._emit_progress("done", "Audit termine")
         return report
 
     def _scan_thread(self, callback_success, callback_error) -> None:
@@ -82,15 +94,18 @@ class ScannerManager:
         else:
             parsed_data = self.parse_linux_output(self.get_linux_ports())
 
+        self._emit_progress("resolve", "Resolution des processus")
         self.run_go_scan()
 
         if self.exclude_local:
+            self._emit_progress("filter", "Filtrage des listeners loopback")
             parsed_data = [
                 entry
                 for entry in parsed_data
                 if not security_analyst.is_local_address(entry.get("ip", ""))
             ]
 
+        self._emit_progress("reputation", "Enrichissement de reputation")
         return [self.reputation.enrich_entry(entry) for entry in parsed_data]
 
     def analyze_risk(self, data: list[dict]) -> dict:

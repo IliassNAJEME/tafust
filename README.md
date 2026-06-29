@@ -135,6 +135,35 @@ VITE_API_BASE_URL=
 python main.py
 ```
 
+## Windows Desktop Build
+
+Tafust can be packaged as a standalone Windows desktop executable with `PyInstaller`.
+
+### Build prerequisites
+
+- Windows
+- Python virtual environment in `.\venv`
+- Dependencies installed from `requirements.txt`
+
+### Build command
+
+From the project root in PowerShell:
+
+```powershell
+.\build_windows.ps1 -Clean
+```
+
+Output:
+
+- `dist\Tafust.exe`
+
+### Notes for the packaged app
+
+- The executable embeds `config/whitelist.json` and `img/logo.png`.
+- Runtime exports are written to `%LOCALAPPDATA%\Tafust\tafust_data`.
+- You can place a `.env` file next to `Tafust.exe` to provide `VIRUSTOTAL_API_KEY`.
+- The optional Go engine is not bundled unless you also provide `engine/scanner.exe`.
+
 ## Notes
 
 - Runtime exports are written to `tafust_data/`, which is ignored by Git.

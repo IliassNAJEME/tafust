@@ -27,14 +27,7 @@ let toastCounter = 0;
 export default function App() {
   const [excludeLocal, setExcludeLocal] = useState(false);
   const [health, setHealth] = useState(undefined);
-  const [payload, setPayload] = useState(() => {
-    try {
-      const saved = localStorage.getItem("tafust_last_report");
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("dashboard");
