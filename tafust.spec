@@ -6,6 +6,7 @@ block_cipher = None
 datas = [
     ("config", "config"),
     ("img", "img"),
+    ("webview_ui", "webview_ui"),
 ]
 
 a = Analysis(

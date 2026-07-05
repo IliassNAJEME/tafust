@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tafust - Network Security Audit</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS (via CDN with config) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        background: '#0a0e14',
+                        surface: '#121822',
+                        'surface-light': '#1c2433',
+                        border: '#2a3441',
+                        accent: '#00f0ff',
+                        'accent-dim': '#008b94',
+                        danger: '#ff2a5f',
+                        warning: '#ffb800',
+                        safe: '#00ffa3',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- GSAP for Animations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    
+    <!-- Vis.js for Network Graph -->
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="bg-background text-gray-200 font-sans h-screen w-screen overflow-hidden flex flex-col antialiased selection:bg-accent/30 selection:text-accent">
+    
+    <!-- Titlebar (draggable region for pywebview) -->
+    <div class="h-8 w-full drag-region flex items-center px-4 bg-background border-b border-border z-50 fixed top-0">
+        <div class="flex items-center gap-2">
+            <div class="w-3 h-3 rounded-full bg-border"></div>
+            <div class="text-xs font-semibold text-gray-500 tracking-wider">TAFUST</div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="flex-1 flex flex-col overflow-hidden mt-8">
+        
+        <!-- Header -->
+        <header class="glass-panel mx-6 mt-6 p-6 flex justify-between items-center z-10 relative">
+            <!-- Decorative Glow -->
+            <div class="absolute -top-10 -left-10 w-32 h-32 bg-accent rounded-full mix-blend-screen filter blur-[80px] opacity-20"></div>
+            
+            <div class="flex items-center gap-4">
+                <div class="w-14 h-14 rounded-2xl bg-surface-light border border-border flex items-center justify-center text-accent shadow-[0_0_15px_rgba(0,240,255,0.1)]">
+                    <i class="ph-fill ph-shield-check text-3xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-3xl font-bold text-white tracking-tight">Tafust Audit</h1>
+                    <p class="text-sm text-gray-400 mt-1">Ports · Processus · Risques réseau</p>
+                </div>
+            </div>
+            
+            <div class="flex flex-col items-end gap-2 text-sm text-gray-400">
+                <div class="flex items-center gap-2">
+                    <span id="sys-os">Windows</span>
+                    <i class="ph ph-windows-logo"></i>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span id="sys-res">CPU: --% | RAM: --%</span>
+                    <i class="ph ph-cpu"></i>
+                </div>
+                <div class="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" id="vt-container" title="Cliquez pour les instructions VirusTotal">
+                    <span id="sys-vt" class="text-warning">VirusTotal Inactif</span>
+                    <i class="ph ph-virus"></i>
+                </div>
+            </div>
+        </header>
+
+        <!-- Controls -->
+        <section class="mx-6 mt-4 flex items-center justify-between z-10">
+            <label class="flex items-center gap-3 cursor-pointer group">
+                <div class="relative">
+                    <input type="checkbox" id="exclude-local" class="sr-only">
+                    <div class="block bg-surface-light border border-border w-12 h-6 rounded-full transition-colors duration-300" id="toggle-bg"></div>
+                    <div class="dot absolute left-1 top-1 bg-gray-400 w-4 h-4 rounded-full transition transform duration-300" id="toggle-dot"></div>
+                </div>
+                <span class="text-sm text-gray-300 font-medium group-hover:text-white transition-colors">Exclure les listeners loopback</span>
+            </label>
+            
+            <button id="btn-scan" class="scan-btn bg-accent/10 text-accent border border-accent/30 hover:bg-accent/20 hover:border-accent hover:shadow-[0_0_20px_rgba(0,240,255,0.3)] px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all duration-300 transform active:scale-95">
+                <i class="ph-bold ph-lightning text-xl"></i>
+                Lancer l'audit
+            </button>
+        </section>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 flex flex-col min-h-0 mx-6 mt-6 mb-6 relative">
+            
+            <!-- Empty State -->
+            <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center text-center opacity-100 transition-opacity duration-500">
+                <div class="w-32 h-32 rounded-full border border-border border-dashed flex items-center justify-center mb-6 relative">
+                    <i class="ph ph-radar text-5xl text-gray-500"></i>
+                    <div class="absolute inset-0 rounded-full border border-accent/20 animate-[ping_3s_cubic-bezier(0,0,0.2,1)_infinite]"></div>
+                </div>
+                <h3 class="text-xl font-medium text-gray-300">Aucun audit en cours</h3>
+                <p class="text-gray-500 mt-2 max-w-sm">Lancez l'audit pour inspecter les ports en écoute et analyser les processus locaux.</p>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loading-state" class="absolute inset-0 flex-col items-center justify-center text-center opacity-0 pointer-events-none hidden">
+                <div class="relative w-40 h-40 flex items-center justify-center mb-8">
+                    <!-- Scanner Animation -->
+                    <div class="absolute inset-0 border-2 border-accent/20 rounded-full"></div>
+                    <div class="absolute inset-0 border-2 border-accent/80 border-t-transparent rounded-full animate-spin"></div>
+                    <i class="ph-fill ph-shield-search text-4xl text-accent absolute"></i>
+                    
+                    <!-- Progress Text -->
+                    <div class="absolute -bottom-8 whitespace-nowrap text-accent font-mono text-sm" id="loading-step">Initialisation...</div>
+                </div>
+                
+                <!-- Skeleton lines -->
+                <div class="w-full max-w-2xl flex flex-col gap-3 mt-8">
+                    <div class="skeleton-shimmer h-16 w-full rounded-xl bg-surface-light border border-border"></div>
+                    <div class="skeleton-shimmer h-16 w-full rounded-xl bg-surface-light border border-border" style="animation-delay: 0.1s"></div>
+                    <div class="skeleton-shimmer h-16 w-full rounded-xl bg-surface-light border border-border" style="animation-delay: 0.2s"></div>
+                </div>
+            </div>
+
+            <!-- Results View -->
+            <div id="results-view" class="absolute inset-0 flex flex-col opacity-0 pointer-events-none hidden">
+                
+                <!-- Summary Cards -->
+                <div class="grid grid-cols-4 gap-4 mb-6" id="summary-cards">
+                    <!-- Injected by JS -->
+                </div>
+
+                <!-- Tabs -->
+                <div class="flex items-center justify-between mb-4 border-b border-border pb-2">
+                    <div class="flex gap-2" id="tabs-container">
+                        <!-- Injected by JS -->
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="btn-export" class="text-sm px-4 py-2 rounded-lg border border-border hover:bg-surface-light text-gray-300 hover:text-white transition-colors flex items-center gap-2">
+                            <i class="ph ph-download-simple"></i> Exporter
+                        </button>
+                    </div>
+                </div>
+
+                <!-- List Content -->
+                <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar" id="results-list">
+                    <!-- Injected by JS -->
+                </div>
+                
+                <!-- Network Graph Container (Hidden by default) -->
+                <div class="flex-1 overflow-hidden rounded-xl border border-border hidden bg-surface relative" id="network-graph-container">
+                    <div id="network-graph" class="w-full h-full"></div>
+                    <div class="absolute bottom-4 left-4 glass-panel px-4 py-2 text-xs flex gap-4">
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-danger"></div> Critique</div>
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-warning"></div> Modéré</div>
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-safe"></div> Légitime</div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Side Drawer (Detail Modal) -->
+    <div id="drawer-overlay" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 opacity-0 pointer-events-none transition-opacity duration-300"></div>
+    
+    <div id="side-drawer" class="fixed top-0 right-0 bottom-0 w-[600px] glass-panel border-l border-border z-50 transform translate-x-full flex flex-col shadow-2xl">
+        <div class="p-6 border-b border-border flex justify-between items-center">
+            <h2 class="text-xl font-bold text-white flex items-center gap-3">
+                <i class="ph-fill ph-file-text text-accent"></i>
+                Détails du processus
+            </h2>
+            <button id="btn-close-drawer" class="w-8 h-8 rounded-full bg-surface hover:bg-surface-light border border-border flex items-center justify-center text-gray-400 hover:text-white transition-colors">
+                <i class="ph ph-x text-lg"></i>
+            </button>
+        </div>
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6" id="drawer-content">
+            <!-- Content injected via JS -->
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed bottom-6 right-6 flex flex-col gap-3 z-50"></div>
+
+    <!-- Scripts -->
+    <script src="js/app.js"></script>
+</body>
+</html>
